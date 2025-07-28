@@ -6,7 +6,6 @@ project(duckpass VERSION 1.0)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# --- NEW: Find OpenSSL package ---
 # This tells CMake to find the OpenSSL library on your system.
 # It will throw an error if OpenSSL is not found.
 find_package(OpenSSL REQUIRED)
@@ -24,7 +23,6 @@ target_include_directories(duckpass PUBLIC
         "${CMAKE_SOURCE_DIR}/vendor"
 )
 
-# --- NEW: Link OpenSSL to our executable ---
 # We need to link against the 'Crypto' component of OpenSSL.
 target_link_libraries(duckpass PRIVATE OpenSSL::Crypto)
 
