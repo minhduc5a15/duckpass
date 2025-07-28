@@ -6,10 +6,10 @@
 namespace crypto_handler {
 
     // Define constants for our crypto operations
-    const int SALT_BYTES = 16;
-    const int KEY_BYTES = 32; // 32 bytes = 256 bits for AES-256
-    const int IV_BYTES = 16;  // 16 bytes = 128 bits for AES block size
-    const int PBKDF2_ITERATIONS = 100000;
+    constexpr int SALT_BYTES = 16;
+    constexpr int KEY_BYTES = 32; // 32 bytes = 256 bits for AES-256
+    constexpr int IV_BYTES = 16;  // 16 bytes = 128 bits for AES block size
+    constexpr int PBKDF2_ITERATIONS = 100000;
 
     // Generates a vector of cryptographically secure random bytes.
     std::vector<unsigned char> generate_random_bytes(int num_bytes);
