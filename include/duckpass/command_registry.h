@@ -18,7 +18,7 @@ class command_registry {
 public:
     void register_command(const std::string &name, command_factory factory);
 
-    std::unique_ptr<i_command> create_command(CLI::App *app);
+    std::unique_ptr<i_command> create_command(const CLI::App *app) const;
 
 private:
     std::map<std::string, command_factory> command_factories_;
