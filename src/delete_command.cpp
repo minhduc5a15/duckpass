@@ -43,7 +43,7 @@ void delete_command::execute() {
 
     try {
         vault_handler::save_vault(vault_path, vault_data, master_password);
-        std::cout << "Vault saved successfully." << std::endl;
+        std::cout << "Vault saved successfully to " << vault_path.string() << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "Error saving vault: " << e.what() << std::endl;
     }
