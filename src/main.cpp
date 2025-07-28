@@ -1,13 +1,19 @@
 #include <iostream>
 #include <memory>
-#include <termios.h>
-#include <unistd.h>
+#include <string>
 
 #include "CLI/CLI.hpp"
 #include "duckpass/command_registry.h"
-#include "duckpass/add_command.h"
 
-int main(int argc, char **argv) {
+// Command headers
+#include "duckpass/add_command.h"
+#include "duckpass/list_command.h"
+#include "duckpass/get_command.h"
+#include "duckpass/delete_command.h"
+#include "duckpass/generate_command.h"
+
+
+int main(int argc, char** argv) {
     CLI::App app{"duckpass: A modular command-line password manager"};
     app.require_subcommand(1);
 
@@ -15,13 +21,29 @@ int main(int argc, char **argv) {
 
     // --- Setup and Register All Commands ---
     add_command::setup(app);
-    // get_command::setup(app);
+    list_command::setup(app);
+    get_command::setup(app);
+    delete_command::setup(app);
+    generate_command::setup(app);
 
-    registry.register_command("add", [](CLI::App *cmd_app) {
+    registry.register_command("add", [](CLI::App* cmd_app){
         return std::make_unique<add_command>(cmd_app);
     });
-    // registry.register_command("get", ...);
+    registry.register_command("list", [](CLI::App* cmd_app){
+        return std::make_unique<list_command>(cmd_app);
+    });
+    registry.register_command("get", [](CLI::App* cmd_app){
+        return std::make_unique<get_command>(cmd_app);
+    });
+    registry.register_command("delete", [](CLI::App* cmd_app){
+        return std::make_unique<delete_command>(cmd_app);
+    });
+    registry.register_command("generate", [](CLI::App* cmd_app){
+        return std::make_unique<generate_command>(cmd_app);
+    });
 
+
+    // --- Parsing and Execution ---
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError &e) {
@@ -32,8 +54,7 @@ int main(int argc, char **argv) {
 
     if (command) {
         command->execute();
-    }
-    else {
+    } else {
         std::cerr << "Error: Unknown or missing command." << std::endl;
         return 1;
     }

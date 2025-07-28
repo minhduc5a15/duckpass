@@ -1,6 +1,7 @@
 #include "duckpass/add_command.h"
 #include "duckpass/vault.h"
 #include "duckpass/utils.h"
+#include "duckpass/config_handler.h"
 #include "CLI/CLI.hpp"
 #include <iostream>
 
@@ -19,12 +20,15 @@ add_command::add_command(CLI::App *app) {
 }
 
 void add_command::execute() {
+    config_handler config;
+    auto vault_path = config.get_vault_path();
+
     nlohmann::json vault_data;
     std::string master_password;
-    bool is_new_vault = !vault_handler::vault_exists();
+    bool is_new_vault = !vault_handler::vault_exists(vault_path);
 
     if (is_new_vault) {
-        std::cout << "Creating a new vault..." << std::endl;
+        std::cout << "Info: No vault found. Creating a new one..." << std::endl;
         master_password = get_password_silent("Enter a new master password: ");
         std::string confirm_password = get_password_silent("Confirm master password: ");
         if (master_password.empty() || master_password != confirm_password) {
@@ -35,7 +39,7 @@ void add_command::execute() {
     else {
         master_password = get_password_silent("Enter master password: ");
         try {
-            vault_data = vault_handler::load_vault(master_password);
+            vault_data = vault_handler::load_vault(vault_path, master_password);
         } catch (const std::exception &e) {
             std::cerr << "Error: " << e.what() << std::endl;
             return;
@@ -53,8 +57,8 @@ void add_command::execute() {
     std::cout << "Success: Entry '" << name_ << "' added." << std::endl;
 
     try {
-        vault_handler::save_vault(vault_data, master_password);
-        std::cout << "Vault saved successfully." << std::endl;
+        vault_handler::save_vault(vault_path, vault_data, master_password);
+        std::cout << "Vault saved successfully to " << vault_path.string() << std::endl;
     } catch (const std::exception &e) {
         std::cerr << "Error saving vault: " << e.what() << std::endl;
     }
