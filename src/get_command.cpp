@@ -2,17 +2,18 @@
 #include "duckpass/vault.h"
 #include "duckpass/utils.h"
 #include "duckpass/config_handler.h"
+#include "duckpass/clipboard_handler.h"
 #include "CLI/CLI.hpp"
 #include <iostream>
 
-CLI::App* get_command::setup(CLI::App& app) {
-    CLI::App* get_cmd = app.add_subcommand("get", "Get an entry from the vault");
+CLI::App *get_command::setup(CLI::App &app) {
+    CLI::App *get_cmd = app.add_subcommand("get", "Get an entry from the vault");
     get_cmd->add_option("name", "The name of the entry to retrieve")->required();
     get_cmd->add_flag("-c,--copy", "Copy the password to clipboard");
     return get_cmd;
 }
 
-get_command::get_command(CLI::App* app) {
+get_command::get_command(CLI::App *app) {
     app->get_option("name")->results(name_);
     copy_to_clipboard_ = app->get_option("--copy")->as<bool>();
 }
@@ -30,7 +31,7 @@ void get_command::execute() {
     nlohmann::json vault_data;
     try {
         vault_data = vault_handler::load_vault(vault_path, master_password);
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         std::cerr << "Error: " << e.what() << std::endl;
         return;
     }
@@ -40,13 +41,19 @@ void get_command::execute() {
         return;
     }
 
-    const auto& entry = vault_data[name_];
+    const auto &entry = vault_data[name_];
     const std::string username = entry.value("username", "");
     const std::string password = entry.value("password", "");
 
     if (copy_to_clipboard_) {
-        std::cout << "Password for '" << name_ << "' copied to clipboard (simulation)." << std::endl;
-    } else {
+        if (clipboard_handler::set_text(password)) {
+            std::cout << "Password for '" << name_ << "' copied to clipboard." << std::endl;
+        }
+        else {
+            std::cerr << "Error: Could not copy to clipboard." << std::endl;
+        }
+    }
+    else {
         std::cout << "Entry: " << name_ << std::endl;
         std::cout << "  Username: " << username << std::endl;
         std::cout << "  Password: " << password << std::endl;

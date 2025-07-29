@@ -11,7 +11,7 @@
 #include "duckpass/get_command.h"
 #include "duckpass/delete_command.h"
 #include "duckpass/generate_command.h"
-
+#include "duckpass/export_command.h"
 
 int main(int argc, char** argv) {
     CLI::App app{"duckpass: A modular command-line password manager"};
@@ -25,6 +25,7 @@ int main(int argc, char** argv) {
     get_command::setup(app);
     delete_command::setup(app);
     generate_command::setup(app);
+    export_command::setup(app);
 
     registry.register_command("add", [](CLI::App* cmd_app){
         return std::make_unique<add_command>(cmd_app);
@@ -41,7 +42,9 @@ int main(int argc, char** argv) {
     registry.register_command("generate", [](CLI::App* cmd_app){
         return std::make_unique<generate_command>(cmd_app);
     });
-
+    registry.register_command("export", [](CLI::App* cmd_app){
+        return std::make_unique<export_command>(cmd_app);
+    });
 
     // --- Parsing and Execution ---
     try {
