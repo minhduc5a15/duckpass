@@ -5,6 +5,7 @@
 #include "duckpass/clipboard_handler.h"
 #include "CLI/CLI.hpp"
 #include <iostream>
+#include <chrono>
 
 CLI::App *get_command::setup(CLI::App &app) {
     CLI::App *get_cmd = app.add_subcommand("get", "Get an entry from the vault");
@@ -48,6 +49,10 @@ void get_command::execute() {
     if (copy_to_clipboard_) {
         if (clipboard_handler::set_text(password)) {
             std::cout << "Password for '" << name_ << "' copied to clipboard." << std::endl;
+
+            const int delay_seconds = 30;
+            std::cout << "It will be cleared automatically in " << delay_seconds << " seconds." << std::endl;
+            clipboard_handler::clear_after_delay(std::chrono::seconds(delay_seconds));
         }
         else {
             std::cerr << "Error: Could not copy to clipboard." << std::endl;
