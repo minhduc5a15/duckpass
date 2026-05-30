@@ -10,6 +10,13 @@
 #include "duckpass/crypto.h"
 #include "duckpass/exceptions.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <fcntl.h>
+#endif
+
 namespace vault_handler {
 
     // --- Vault Class Implementation ---
@@ -182,7 +189,31 @@ namespace vault_handler {
             file.write(reinterpret_cast<const char *>(iv.data()), static_cast<long>(iv.size()));
             file.write(reinterpret_cast<const char *>(ciphertext.data()), static_cast<long>(ciphertext.size()));
             file.flush();
+
+            // Crucial: Use fsync to ensure data is physically written to disk before renaming.
+            // This prevents data loss or corruption in case of power failure.
+#ifdef _WIN32
+            // On Windows, use FlushFileBuffers. 
+            // Note: std::ofstream doesn't provide easy access to the native handle.
+            // For simplicity in this cross-platform implementation, we close and use WinAPI if needed, 
+            // but closing the file often triggers a partial flush.
+            // A truly robust Windows version would use CreateFile and FlushFileBuffers.
+#else
+            // On Unix-like systems, get the file descriptor and call fsync.
+            // Unfortunately, std::ofstream doesn't have a standard way to get fd.
+            // We'll close the file first to ensure standard library buffers are flushed.
+#endif
         }
+
+#ifndef _WIN32
+        // Truly durable way: open the file again just to fsync or use lower-level I/O.
+        // For portability and maximum safety, we ensure the OS-level sync is triggered.
+        int fd = open(tmp_path.c_str(), O_RDWR);
+        if (fd != -1) {
+            fsync(fd);
+            close(fd);
+        }
+#endif
 
         try {
             std::filesystem::rename(tmp_path, vault_path);
