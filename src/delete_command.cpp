@@ -24,7 +24,7 @@ void delete_command::execute() {
         return;
     }
 
-    std::string master_password = get_password_silent("Enter master password: ");
+    duckpass::SecureString master_password = get_password_silent("Enter master password: ");
     nlohmann::json vault_data;
     try {
         vault_data = vault_handler::load_vault(vault_path, master_password);

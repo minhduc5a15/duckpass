@@ -3,8 +3,12 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "duckpass/secure_allocator.h"
 
 namespace crypto_handler {
+    using duckpass::SecureString;
+    using duckpass::SecureBytes;
+
     // Constants for Argon2
     const uint32_t ARGON2_TIME_COST = 2; // t_cost
     const uint32_t ARGON2_MEMORY_COST = 65536; // m_cost (64 MB)
@@ -20,14 +24,14 @@ namespace crypto_handler {
     std::vector<unsigned char> generate_random_bytes(int num_bytes);
 
     // Derives a 256-bit key from a password and salt using Argon2id.
-    std::vector<unsigned char> derive_key_from_password(const std::string &password, const std::vector<unsigned char> &salt);
+    SecureBytes derive_key_from_password(const SecureString &password, const std::vector<unsigned char> &salt);
 
     // Encrypts plaintext using AES-256-GCM.
     // Returns a single vector containing [ciphertext + authentication_tag].
-    std::vector<unsigned char> encrypt_data(const std::string &plaintext, const std::vector<unsigned char> &key, const std::vector<unsigned char> &iv);
+    std::vector<unsigned char> encrypt_data(const SecureString &plaintext, const SecureBytes &key, const std::vector<unsigned char> &iv);
 
     // Decrypts data using AES-256-GCM.
     // Expects a single vector containing [ciphertext + authentication_tag].
     // Throws an exception if authentication fails.
-    std::string decrypt_data(const std::vector<unsigned char> &encrypted_blob, const std::vector<unsigned char> &key, const std::vector<unsigned char> &iv);
+    SecureString decrypt_data(const std::vector<unsigned char> &encrypted_blob, const SecureBytes &key, const std::vector<unsigned char> &iv);
 } // namespace crypto_handler

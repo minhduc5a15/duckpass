@@ -2,6 +2,7 @@
 
 #include "duckpass/icommand.h"
 #include <string>
+#include "duckpass/secure_allocator.h"
 
 namespace CLI {
     class App;
@@ -18,5 +19,5 @@ public:
 private:
     std::string name_;
     std::string username_;
-    std::string password_;
+    duckpass::SecureString password_;
 };

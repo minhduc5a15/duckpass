@@ -28,7 +28,7 @@ void get_command::execute() {
         return;
     }
 
-    std::string master_password = get_password_silent("Enter master password: ");
+    duckpass::SecureString master_password = get_password_silent("Enter master password: ");
     nlohmann::json vault_data;
     try {
         vault_data = vault_handler::load_vault(vault_path, master_password);
@@ -44,10 +44,14 @@ void get_command::execute() {
 
     const auto &entry = vault_data[name_];
     const std::string username = entry.value("username", "");
-    const std::string password = entry.value("password", "");
+    std::string password_raw = entry.value("password", "");
+    duckpass::SecureString password(password_raw.begin(), password_raw.end());
+    OPENSSL_cleanse(password_raw.data(), password_raw.length());
 
     if (copy_to_clipboard_) {
-        if (clipboard_handler::set_text(password)) {
+        std::string temp_pass = std::string(password.begin(), password.end());
+        if (clipboard_handler::set_text(temp_pass)) {
+            OPENSSL_cleanse(temp_pass.data(), temp_pass.length());
             std::cout << "Password for '" << name_ << "' copied to clipboard." << std::endl;
 
             const int delay_seconds = 30;
@@ -55,12 +59,15 @@ void get_command::execute() {
             clipboard_handler::clear_after_delay(std::chrono::seconds(delay_seconds));
         }
         else {
+            OPENSSL_cleanse(temp_pass.data(), temp_pass.length());
             std::cerr << "Error: Could not copy to clipboard." << std::endl;
         }
     }
     else {
+        std::string temp_pass = std::string(password.begin(), password.end());
         std::cout << "Entry: " << name_ << std::endl;
         std::cout << "  Username: " << username << std::endl;
-        std::cout << "  Password: " << password << std::endl;
+        std::cout << "  Password: " << temp_pass << std::endl;
+        OPENSSL_cleanse(temp_pass.data(), temp_pass.length());
     }
 }

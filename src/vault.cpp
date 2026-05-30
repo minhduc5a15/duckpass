@@ -1,17 +1,20 @@
 #include "duckpass/vault.h"
-#include "duckpass/crypto.h"
+
 #include <fstream>
-#include <vector>
+#include <iostream>
 #include <iterator>
 #include <stdexcept>
+#include <vector>
+
+#include "duckpass/crypto.h"
 
 namespace vault_handler {
     bool vault_exists(const std::filesystem::path &vault_path) {
-        std::ifstream file(vault_path);
+        const std::ifstream file(vault_path);
         return file.good();
     }
 
-    nlohmann::json load_vault(const std::filesystem::path &vault_path, const std::string &master_password) {
+    nlohmann::json load_vault(const std::filesystem::path &vault_path, const SecureString &master_password) {
         // 1. Open file in binary mode
         std::ifstream file(vault_path, std::ios::binary);
         if (!file) {
@@ -26,41 +29,51 @@ namespace vault_handler {
         file.read(reinterpret_cast<char *>(iv.data()), crypto_handler::IV_BYTES);
 
         // Read the rest of the file into ciphertext
-        std::vector<unsigned char> ciphertext(
-            (std::istreambuf_iterator<char>(file)),
-            std::istreambuf_iterator<char>()
-        );
+        std::vector<unsigned char> ciphertext((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         file.close();
 
         // 3. Derive key and decrypt
-        std::vector<unsigned char> key = crypto_handler::derive_key_from_password(master_password, salt);
-        std::string plaintext = crypto_handler::decrypt_data(ciphertext, key, iv);
+        crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt);
+        crypto_handler::SecureString plaintext = crypto_handler::decrypt_data(ciphertext, key, iv);
 
         // 4. Parse plaintext to JSON
-        return nlohmann::json::parse(plaintext);
+        return nlohmann::json::parse(plaintext.begin(), plaintext.end());
     }
 
-    void save_vault(const std::filesystem::path &vault_path, const nlohmann::json &vault_data, const std::string &master_password) {
-        // 1. Serialize JSON data to string
-        std::string plaintext = vault_data.dump();
+    void save_vault(const std::filesystem::path &vault_path, const nlohmann::json &vault_data, const SecureString &master_password) {
+        // Serialize JSON data to string
+        std::string dumped = vault_data.dump();
+        crypto_handler::SecureString plaintext(dumped.begin(), dumped.end());
+        OPENSSL_cleanse(dumped.data(), dumped.length());
 
-        // 2. Generate a new salt and IV for this save operation
+        // Generate a new salt and IV for this save operation
         std::vector<unsigned char> salt = crypto_handler::generate_random_bytes(crypto_handler::SALT_BYTES);
         std::vector<unsigned char> iv = crypto_handler::generate_random_bytes(crypto_handler::IV_BYTES);
 
-        // 3. Derive key and encrypt
-        std::vector<unsigned char> key = crypto_handler::derive_key_from_password(master_password, salt);
+        std::filesystem::path tmp_path = vault_path;
+        tmp_path.replace_extension(vault_path.extension().string() + ".tmp");
+
+        // Derive key and encrypt
+        crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt);
         std::vector<unsigned char> ciphertext = crypto_handler::encrypt_data(plaintext, key, iv);
 
-        // 4. Write salt, iv, and ciphertext to file
-        std::ofstream file(vault_path, std::ios::binary | std::ios::trunc);
-        if (!file) {
-            throw std::runtime_error("Error: Could not open vault file for writing.");
+        {
+            std::ofstream file(tmp_path, std::ios::binary | std::ios::trunc);
+            if (!file) {
+                throw std::runtime_error("Error: Could not open temporary vault file for writing.");
+            }
+
+            file.write(reinterpret_cast<const char *>(salt.data()), static_cast<long>(salt.size()));
+            file.write(reinterpret_cast<const char *>(iv.data()), static_cast<long>(iv.size()));
+            file.write(reinterpret_cast<const char *>(ciphertext.data()), static_cast<long>(ciphertext.size()));
+            file.flush();
         }
 
-        file.write(reinterpret_cast<const char *>(salt.data()), salt.size());
-        file.write(reinterpret_cast<const char *>(iv.data()), iv.size());
-        file.write(reinterpret_cast<const char *>(ciphertext.data()), ciphertext.size());
-        file.close();
+        try {
+            std::filesystem::rename(tmp_path, vault_path);
+        } catch (const std::filesystem::filesystem_error &e) {
+            std::filesystem::remove(tmp_path);  // Clean up temp file if rename fails
+            throw std::runtime_error("Error: Failed to safely replace the vault file: " + std::string(e.what()));
+        }
     }
-} // namespace vault_handler
+}  // namespace vault_handler

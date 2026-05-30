@@ -16,7 +16,11 @@ CLI::App *add_command::setup(CLI::App &app) {
 add_command::add_command(CLI::App *app) {
     app->get_option("name")->results(name_);
     app->get_option("username")->results(username_);
-    app->get_option("password")->results(password_);
+    
+    std::string temp_password;
+    app->get_option("password")->results(temp_password);
+    password_ = duckpass::SecureString(temp_password.begin(), temp_password.end());
+    OPENSSL_cleanse(temp_password.data(), temp_password.length());
 }
 
 void add_command::execute() {
@@ -24,13 +28,13 @@ void add_command::execute() {
     auto vault_path = config.get_vault_path();
 
     nlohmann::json vault_data;
-    std::string master_password;
+    duckpass::SecureString master_password;
     bool is_new_vault = !vault_handler::vault_exists(vault_path);
 
     if (is_new_vault) {
         std::cout << "Info: No vault found. Creating a new one..." << std::endl;
         master_password = get_password_silent("Enter a new master password: ");
-        std::string confirm_password = get_password_silent("Confirm master password: ");
+        duckpass::SecureString confirm_password = get_password_silent("Confirm master password: ");
         if (master_password.empty() || master_password != confirm_password) {
             std::cerr << "Error: Passwords do not match or are empty." << std::endl;
             return;
@@ -50,10 +54,13 @@ void add_command::execute() {
         std::cout << "Error: Entry '" << name_ << "' already exists." << std::endl;
         return;
     }
+    std::string temp_entry_password = std::string(password_.begin(), password_.end());
     vault_data[name_] = {
         {"username", username_},
-        {"password", password_}
+        {"password", temp_entry_password}
     };
+    OPENSSL_cleanse(temp_entry_password.data(), temp_entry_password.length());
+    
     std::cout << "Success: Entry '" << name_ << "' added." << std::endl;
 
     try {

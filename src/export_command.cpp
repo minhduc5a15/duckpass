@@ -32,7 +32,7 @@ void export_command::execute() {
     }
 
     // 1. Get password and decrypt vault
-    std::string master_password = get_password_silent("Enter master password to export: ");
+    duckpass::SecureString master_password = get_password_silent("Enter master password to export: ");
     nlohmann::json vault_data;
     try {
         vault_data = vault_handler::load_vault(vault_path, master_password);

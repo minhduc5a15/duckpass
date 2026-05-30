@@ -18,8 +18,8 @@ namespace crypto_handler {
         return buffer;
     }
 
-    std::vector<unsigned char> derive_key_from_password(const std::string &password, const std::vector<unsigned char> &salt) {
-        std::vector<unsigned char> key(KEY_BYTES);
+    SecureBytes derive_key_from_password(const SecureString &password, const std::vector<unsigned char> &salt) {
+        SecureBytes key(KEY_BYTES);
         int result = argon2id_hash_raw(
             ARGON2_TIME_COST,
             ARGON2_MEMORY_COST,
@@ -38,7 +38,7 @@ namespace crypto_handler {
         return key;
     }
 
-    std::vector<unsigned char> encrypt_data(const std::string &plaintext, const std::vector<unsigned char> &key, const std::vector<unsigned char> &iv) {
+    std::vector<unsigned char> encrypt_data(const SecureString &plaintext, const SecureBytes &key, const std::vector<unsigned char> &iv) {
         EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
         if (!ctx) throw std::runtime_error("Failed to create cipher context.");
 
@@ -75,7 +75,7 @@ namespace crypto_handler {
         return ciphertext;
     }
 
-    std::string decrypt_data(const std::vector<unsigned char> &encrypted_blob, const std::vector<unsigned char> &key, const std::vector<unsigned char> &iv) {
+    SecureString decrypt_data(const std::vector<unsigned char> &encrypted_blob, const SecureBytes &key, const std::vector<unsigned char> &iv) {
         if (encrypted_blob.size() < TAG_BYTES) {
             throw std::runtime_error("Invalid encrypted data: too short to contain a tag.");
         }
@@ -98,16 +98,16 @@ namespace crypto_handler {
             throw std::runtime_error("Failed to set GCM authentication tag.");
         }
 
-        std::vector<unsigned char> plaintext(ciphertext.size());
+        SecureBytes plaintext_bytes(ciphertext.size());
         int len = 0;
-        if (EVP_DecryptUpdate(ctx, plaintext.data(), &len, ciphertext.data(), ciphertext.size()) != 1) {
+        if (EVP_DecryptUpdate(ctx, plaintext_bytes.data(), &len, ciphertext.data(), ciphertext.size()) != 1) {
             EVP_CIPHER_CTX_free(ctx);
             throw std::runtime_error("Failed during GCM decryption update. Data may be corrupted.");
         }
         int plaintext_len = len;
 
         // The final check happens here. If the tag is invalid, this call will fail.
-        if (EVP_DecryptFinal_ex(ctx, plaintext.data() + len, &len) != 1) {
+        if (EVP_DecryptFinal_ex(ctx, plaintext_bytes.data() + len, &len) != 1) {
             EVP_CIPHER_CTX_free(ctx);
             throw std::runtime_error("GCM authentication failed. Data is corrupted or password is wrong.");
         }
@@ -115,6 +115,11 @@ namespace crypto_handler {
 
         EVP_CIPHER_CTX_free(ctx);
 
-        return std::string(plaintext.begin(), plaintext.begin() + plaintext_len);
+        SecureString result;
+        result.reserve(plaintext_len);
+        for(int i = 0; i < plaintext_len; ++i) {
+            result += static_cast<char>(plaintext_bytes[i]);
+        }
+        return result;
     }
 } // namespace crypto_handler
