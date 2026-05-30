@@ -12,8 +12,21 @@ find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ARGON2 REQUIRED libargon2)
 
-# Find all source files in the src/ directory
-file(GLOB SOURCES "src/*.cpp")
+# Explicitly list all source files
+set(SOURCES
+    src/add_command.cpp
+    src/clipboard_handler.cpp
+    src/config_handler.cpp
+    src/crypto.cpp
+    src/delete_command.cpp
+    src/export_command.cpp
+    src/generate_command.cpp
+    src/get_command.cpp
+    src/list_command.cpp
+    src/main.cpp
+    src/utils.cpp
+    src/vault.cpp
+)
 
 # Create the executable from our source files
 add_executable(duckpass ${SOURCES})

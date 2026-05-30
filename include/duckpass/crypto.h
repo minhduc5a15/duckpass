@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <span>
 #include "duckpass/secure_allocator.h"
 
 namespace crypto_handler {
@@ -35,15 +36,15 @@ namespace crypto_handler {
 
     // Derives a 256-bit key from a password and salt using Argon2id.
     SecureBytes derive_key_from_password(const SecureString &password, 
-                                       const std::vector<unsigned char> &salt,
+                                       std::span<const uint8_t> salt,
                                        const KdfParams &params = {DEFAULT_TIME_COST, DEFAULT_MEMORY_COST, DEFAULT_PARALLELISM});
 
     // Encrypts plaintext using AES-256-GCM.
     // Returns a single vector containing [ciphertext + authentication_tag].
-    std::vector<unsigned char> encrypt_data(const SecureBytes &plaintext, const SecureBytes &key, const std::vector<unsigned char> &iv);
+    std::vector<unsigned char> encrypt_data(std::span<const uint8_t> plaintext, std::span<const uint8_t> key, std::span<const uint8_t> iv);
 
     // Decrypts data using AES-256-GCM.
     // Expects a single vector containing [ciphertext + authentication_tag].
     // Throws an exception if authentication fails.
-    SecureBytes decrypt_data(const std::vector<unsigned char> &encrypted_blob, const SecureBytes &key, const std::vector<unsigned char> &iv);
+    SecureBytes decrypt_data(std::span<const uint8_t> encrypted_blob, std::span<const uint8_t> key, std::span<const uint8_t> iv);
 } // namespace crypto_handler
