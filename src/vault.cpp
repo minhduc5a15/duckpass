@@ -54,7 +54,7 @@ namespace vault_handler {
 
     // --- Binary Serialization Module ---
 
-    // helper dùng để đẩy dữ liệu nhị phân vào SecureBytes
+    // Helper to append binary data into SecureBytes
     void write_uint32(duckpass::SecureBytes& buffer, uint32_t value) {
         uint8_t bytes[4];
         std::memcpy(bytes, &value, 4);
@@ -66,23 +66,23 @@ namespace vault_handler {
         buffer.insert(buffer.end(), str.begin(), str.end());
     }
 
-    // 1. HÀM TỰ VIẾT - TUẦN TỰ HÓA (SERIALIZE) KHÔNG DÙNG THƯ VIỆN NGOÀI
+    // Serializes vault data into a binary format without external libraries
     duckpass::SecureBytes Vault::serialize() const {
         duckpass::SecureBytes buffer;
         
-        // Ghi số lượng entries ở đầu (4 byte)
+        // Write entry count at the beginning (4 bytes)
         write_uint32(buffer, static_cast<uint32_t>(entries.size()));
 
-        // Duyệt qua từng entry và đẩy byte thô vào buffer
+        // Iterate through entries and push raw bytes into the buffer
         for (const auto& entry : entries) {
             write_string(buffer, entry.service);
             write_string(buffer, entry.username);
             write_string(buffer, entry.password);
         }
-        return buffer; // Trả về vùng nhớ được bảo vệ bởi secure_allocator
+        return buffer; // Returns memory protected by secure_allocator
     }
 
-    // Helper dùng để đọc dữ liệu từ span byte
+    // Helper to read data from a byte span
     uint32_t read_uint32(std::span<const uint8_t>& bytes, size_t& offset) {
         if (offset + 4 > bytes.size()) throw std::runtime_error("Malformed vault data");
         uint32_t value;
@@ -95,7 +95,7 @@ namespace vault_handler {
         uint32_t length = read_uint32(bytes, offset);
         if (offset + length > bytes.size()) throw std::runtime_error("Malformed vault data");
         
-        // Khởi tạo chuỗi an toàn trực tiếp từ vùng nhớ thô thông qua span
+        // Initialize a secure string directly from raw memory using span
         duckpass::SecureString str;
         str.reserve(length);
         const uint8_t* start = bytes.data() + offset;
@@ -105,7 +105,7 @@ namespace vault_handler {
         return str;
     }
 
-    // 2. HÀM TỰ VIẾT - GIẢI TUẦN TỰ HÓA (DESERIALIZE) DÙNG C++20 SPAN
+    // Deserializes binary data back into a Vault object using C++20 span
     Vault Vault::deserialize(std::span<const uint8_t> bytes) {
         Vault vault;
         size_t offset = 0;
@@ -129,11 +129,11 @@ namespace vault_handler {
     }
 
     Vault load_vault(const std::filesystem::path &vault_path, const SecureString &master_password) {
-        // POSIX Open file thay vì std::ifstream
+        // Use POSIX open instead of std::ifstream
         int fd = open(vault_path.c_str(), O_RDONLY);
         if (fd == -1) throw duckpass::vault_io_error(vault_path.string());
 
-        // Lấy size file
+        // Get file size
         off_t size = lseek(fd, 0, SEEK_END);
         lseek(fd, 0, SEEK_SET);
 
@@ -143,7 +143,7 @@ namespace vault_handler {
             throw duckpass::vault_corrupted_error("File is too small.");
         }
 
-        // Đọc dữ liệu từ file descriptor
+        // Read KDF parameters, salt, and IV from the file descriptor
         crypto_handler::KdfParams kdf_params;
         read(fd, &kdf_params.time_cost, sizeof(uint32_t));
         read(fd, &kdf_params.memory_cost, sizeof(uint32_t));
@@ -160,17 +160,17 @@ namespace vault_handler {
         read(fd, ciphertext.data(), ciphertext.size());
         close(fd);
 
-        // Giải mã
+        // Derive key and decrypt data
         crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
         crypto_handler::SecureBytes plaintext_bytes = crypto_handler::decrypt_data(ciphertext, key, iv);
 
-        // Đổ mảng byte thô vào C++20 span để tạo Vault Object
+        // Pass raw byte array into C++20 span to reconstruct the Vault object
         std::span<const uint8_t> data_span(reinterpret_cast<const uint8_t*>(plaintext_bytes.data()), plaintext_bytes.size());
         return Vault::deserialize(data_span);
     }
 
     void save_vault(const std::filesystem::path &vault_path, const Vault &vault, const SecureString &master_password) {
-        // Tự động serialize thẳng ra SecureBytes (vùng nhớ an toàn)
+        // Serialize directly into SecureBytes (secure memory)
         duckpass::SecureBytes plaintext = vault.serialize();
 
         crypto_handler::KdfParams kdf_params = {
@@ -187,7 +187,7 @@ namespace vault_handler {
         std::filesystem::path tmp_path = vault_path;
         tmp_path.replace_extension(vault_path.extension().string() + ".tmp");
 
-        // POSIX C thuần: Quản lý File Descriptor một mạch từ đầu đến cuối chống race-condition
+        // POSIX C: Manage File Descriptor from start to finish to prevent race conditions
         int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (fd == -1) throw duckpass::vault_io_error(tmp_path.string());
 
@@ -198,7 +198,7 @@ namespace vault_handler {
         write(fd, iv.data(), iv.size());
         write(fd, ciphertext.data(), ciphertext.size());
 
-        // Ép ghi vật lý xuống đĩa cứng, sau đó close mạch lạc
+        // Force physical write to disk before closing
         fsync(fd);
         close(fd);
 
