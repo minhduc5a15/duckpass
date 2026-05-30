@@ -1,6 +1,7 @@
 #include "duckpass/crypto.h"
 #include <stdexcept>
 #include <vector>
+#include <memory>
 #include "duckpass/exceptions.h"
 
 // OpenSSL for AES-GCM
@@ -11,6 +12,13 @@
 #include <argon2.h>
 
 namespace crypto_handler {
+    
+    /**
+     * @brief RAII wrapper for OpenSSL's EVP_CIPHER_CTX.
+     * Ensures the context is freed automatically on destruction.
+     */
+    using CipherContextPtr = std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)>;
+
     std::vector<unsigned char> generate_random_bytes(const int num_bytes) {
         std::vector<unsigned char> buffer(num_bytes);
         if (RAND_bytes(buffer.data(), num_bytes) != 1) {
@@ -40,36 +48,30 @@ namespace crypto_handler {
     }
 
     std::vector<unsigned char> encrypt_data(const SecureBytes &plaintext, const SecureBytes &key, const std::vector<unsigned char> &iv) {
-        EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+        CipherContextPtr ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
         if (!ctx) throw std::runtime_error("Failed to create cipher context.");
 
-        if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, key.data(), iv.data()) != 1) {
-            EVP_CIPHER_CTX_free(ctx);
+        if (EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, key.data(), iv.data()) != 1) {
             throw std::runtime_error("Failed to initialize GCM encryption.");
         }
 
         std::vector<unsigned char> ciphertext(plaintext.size());
         int len = 0;
-        if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, plaintext.data(), plaintext.size()) != 1) {
-            EVP_CIPHER_CTX_free(ctx);
+        if (EVP_EncryptUpdate(ctx.get(), ciphertext.data(), &len, plaintext.data(), plaintext.size()) != 1) {
             throw std::runtime_error("Failed during GCM encryption update.");
         }
         int ciphertext_len = len;
 
-        if (EVP_EncryptFinal_ex(ctx, ciphertext.data() + len, &len) != 1) {
-            EVP_CIPHER_CTX_free(ctx);
+        if (EVP_EncryptFinal_ex(ctx.get(), ciphertext.data() + len, &len) != 1) {
             throw std::runtime_error("Failed during GCM encryption finalization.");
         }
         ciphertext_len += len;
         ciphertext.resize(ciphertext_len);
 
         std::vector<unsigned char> tag(TAG_BYTES);
-        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, TAG_BYTES, tag.data()) != 1) {
-            EVP_CIPHER_CTX_free(ctx);
+        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, TAG_BYTES, tag.data()) != 1) {
             throw std::runtime_error("Failed to get GCM authentication tag.");
         }
-
-        EVP_CIPHER_CTX_free(ctx);
 
         // Append the tag to the ciphertext
         ciphertext.insert(ciphertext.end(), tag.begin(), tag.end());
@@ -85,36 +87,30 @@ namespace crypto_handler {
         std::vector<unsigned char> ciphertext(encrypted_blob.begin(), encrypted_blob.end() - TAG_BYTES);
         std::vector<unsigned char> tag(encrypted_blob.end() - TAG_BYTES, encrypted_blob.end());
 
-        EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+        CipherContextPtr ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
         if (!ctx) throw std::runtime_error("Failed to create cipher context.");
 
-        if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, key.data(), iv.data()) != 1) {
-            EVP_CIPHER_CTX_free(ctx);
+        if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, key.data(), iv.data()) != 1) {
             throw std::runtime_error("Failed to initialize GCM decryption.");
         }
 
         // Set the expected authentication tag. This is crucial for verification.
-        if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, TAG_BYTES, tag.data()) != 1) {
-            EVP_CIPHER_CTX_free(ctx);
+        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_BYTES, tag.data()) != 1) {
             throw std::runtime_error("Failed to set GCM authentication tag.");
         }
 
         SecureBytes plaintext_bytes(ciphertext.size());
         int len = 0;
-        if (EVP_DecryptUpdate(ctx, plaintext_bytes.data(), &len, ciphertext.data(), ciphertext.size()) != 1) {
-            EVP_CIPHER_CTX_free(ctx);
+        if (EVP_DecryptUpdate(ctx.get(), plaintext_bytes.data(), &len, ciphertext.data(), ciphertext.size()) != 1) {
             throw std::runtime_error("Failed during GCM decryption update. Data may be corrupted.");
         }
         int plaintext_len = len;
 
         // The final check happens here. If the tag is invalid, this call will fail.
-        if (EVP_DecryptFinal_ex(ctx, plaintext_bytes.data() + len, &len) != 1) {
-            EVP_CIPHER_CTX_free(ctx);
+        if (EVP_DecryptFinal_ex(ctx.get(), plaintext_bytes.data() + len, &len) != 1) {
             throw duckpass::wrong_password_error();
         }
         plaintext_len += len;
-
-        EVP_CIPHER_CTX_free(ctx);
 
         plaintext_bytes.resize(plaintext_len);
         return plaintext_bytes;
