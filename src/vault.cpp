@@ -8,6 +8,7 @@
 #include <cstring>
 #include <span>
 #include <cerrno>
+#include <concepts>
 
 #include "duckpass/crypto.h"
 #include "duckpass/exceptions.h"
@@ -16,6 +17,12 @@
 #include <fcntl.h>
 
 namespace vault_handler {
+
+    /**
+     * @brief Concept to ensure types are safe for raw memory operations.
+     */
+    template <typename T>
+    concept TriviallyCopyable = std::is_trivially_copyable_v<T>;
 
     // --- Internal Low-Level Robust POSIX I/O Helpers ---
 
@@ -48,10 +55,56 @@ namespace vault_handler {
         }
     }
 
+    // --- Generic Binary Serialization Helpers using C++20 Concepts ---
+
+    /**
+     * @brief Writes a trivially copyable object to the buffer.
+     */
+    template <TriviallyCopyable T>
+    void write_data(duckpass::SecureBytes& buffer, const T& value) {
+        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&value);
+        buffer.insert(buffer.end(), bytes, bytes + sizeof(T));
+    }
+
+    /**
+     * @brief Writes a string to the buffer: [length (4 bytes)] + [raw data].
+     */
+    void write_data(duckpass::SecureBytes& buffer, const duckpass::SecureString& str) {
+        write_data(buffer, static_cast<uint32_t>(str.length()));
+        buffer.insert(buffer.end(), str.begin(), str.end());
+    }
+
+    /**
+     * @brief Reads a trivially copyable object from a span.
+     */
+    template <TriviallyCopyable T>
+    T read_data(std::span<const uint8_t> bytes, size_t& offset) {
+        if (offset + sizeof(T) > bytes.size()) throw std::runtime_error("Malformed vault data");
+        T value;
+        std::memcpy(&value, bytes.data() + offset, sizeof(T));
+        offset += sizeof(T);
+        return value;
+    }
+
+    /**
+     * @brief Reads a string from a span.
+     */
+    duckpass::SecureString read_string_data(std::span<const uint8_t> bytes, size_t& offset) {
+        uint32_t length = read_data<uint32_t>(bytes, offset);
+        if (offset + length > bytes.size()) throw std::runtime_error("Malformed vault data");
+        
+        duckpass::SecureString str;
+        str.reserve(length);
+        const uint8_t* start = bytes.data() + offset;
+        str.assign(reinterpret_cast<const char*>(start), length);
+        
+        offset += length;
+        return str;
+    }
+
     // --- Vault Class Implementation ---
 
     void Vault::add_entry(VaultEntry entry) {
-        // If entry with same service exists, replace it
         auto it = std::ranges::find_if(entries, [&](const VaultEntry& e) {
             return e.service == entry.service;
         });
@@ -84,57 +137,19 @@ namespace vault_handler {
         return std::nullopt;
     }
 
-    // --- Binary Serialization Module ---
-
-    // Helper to append binary data into SecureBytes
-    void write_uint32(duckpass::SecureBytes& buffer, uint32_t value) {
-        uint8_t bytes[4];
-        std::memcpy(bytes, &value, 4);
-        buffer.insert(buffer.end(), bytes, bytes + 4);
-    }
-
-    void write_string(duckpass::SecureBytes& buffer, const duckpass::SecureString& str) {
-        write_uint32(buffer, static_cast<uint32_t>(str.length()));
-        buffer.insert(buffer.end(), str.begin(), str.end());
-    }
-
     // Serializes vault data into a binary format without external libraries
     duckpass::SecureBytes Vault::serialize() const {
         duckpass::SecureBytes buffer;
         
-        // Write entry count at the beginning (4 bytes)
-        write_uint32(buffer, static_cast<uint32_t>(entries.size()));
+        // Write entry count at the beginning
+        write_data(buffer, static_cast<uint32_t>(entries.size()));
 
-        // Iterate through entries and push raw bytes into the buffer
         for (const auto& entry : entries) {
-            write_string(buffer, entry.service);
-            write_string(buffer, entry.username);
-            write_string(buffer, entry.password);
+            write_data(buffer, entry.service);
+            write_data(buffer, entry.username);
+            write_data(buffer, entry.password);
         }
-        return buffer; // Returns memory protected by secure_allocator
-    }
-
-    // Helper to read data from a byte span
-    uint32_t read_uint32(std::span<const uint8_t>& bytes, size_t& offset) {
-        if (offset + 4 > bytes.size()) throw std::runtime_error("Malformed vault data");
-        uint32_t value;
-        std::memcpy(&value, bytes.data() + offset, 4);
-        offset += 4;
-        return value;
-    }
-
-    duckpass::SecureString read_string(std::span<const uint8_t>& bytes, size_t& offset) {
-        uint32_t length = read_uint32(bytes, offset);
-        if (offset + length > bytes.size()) throw std::runtime_error("Malformed vault data");
-        
-        // Initialize a secure string directly from raw memory using span
-        duckpass::SecureString str;
-        str.reserve(length);
-        const uint8_t* start = bytes.data() + offset;
-        str.assign(reinterpret_cast<const char*>(start), length);
-        
-        offset += length;
-        return str;
+        return buffer;
     }
 
     // Deserializes binary data back into a Vault object using C++20 span
@@ -143,12 +158,12 @@ namespace vault_handler {
         size_t offset = 0;
         if (bytes.empty()) return vault;
 
-        uint32_t num_entries = read_uint32(bytes, offset);
+        uint32_t num_entries = read_data<uint32_t>(bytes, offset);
         for (uint32_t i = 0; i < num_entries; ++i) {
             VaultEntry entry;
-            entry.service = read_string(bytes, offset);
-            entry.username = read_string(bytes, offset);
-            entry.password = read_string(bytes, offset);
+            entry.service = read_string_data(bytes, offset);
+            entry.username = read_string_data(bytes, offset);
+            entry.password = read_string_data(bytes, offset);
             vault.add_entry(std::move(entry));
         }
         return vault;
@@ -161,11 +176,9 @@ namespace vault_handler {
     }
 
     Vault load_vault(const std::filesystem::path &vault_path, const SecureString &master_password) {
-        // Use POSIX open instead of std::ifstream
         int fd = open(vault_path.c_str(), O_RDONLY);
         if (fd == -1) throw duckpass::vault_io_error(vault_path.string());
 
-        // Get file size
         off_t size = lseek(fd, 0, SEEK_END);
         lseek(fd, 0, SEEK_SET);
 
@@ -175,7 +188,6 @@ namespace vault_handler {
             throw duckpass::vault_corrupted_error("File is too small.");
         }
 
-        // Read KDF parameters, salt, and IV from the file descriptor
         crypto_handler::KdfParams kdf_params;
         read_all(fd, &kdf_params.time_cost, sizeof(uint32_t));
         read_all(fd, &kdf_params.memory_cost, sizeof(uint32_t));
@@ -187,22 +199,18 @@ namespace vault_handler {
         std::vector<unsigned char> iv(crypto_handler::IV_BYTES);
         read_all(fd, iv.data(), crypto_handler::IV_BYTES);
 
-        // Ciphertext size includes the tag at the end (for AES-GCM)
         std::vector<unsigned char> ciphertext(size - (3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES));
         read_all(fd, ciphertext.data(), ciphertext.size());
         close(fd);
 
-        // Derive key and decrypt data
         crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
         crypto_handler::SecureBytes plaintext_bytes = crypto_handler::decrypt_data(ciphertext, key, iv);
 
-        // Pass raw byte array into C++20 span to reconstruct the Vault object
         std::span<const uint8_t> data_span(reinterpret_cast<const uint8_t*>(plaintext_bytes.data()), plaintext_bytes.size());
         return Vault::deserialize(data_span);
     }
 
     void save_vault(const std::filesystem::path &vault_path, const Vault &vault, const SecureString &master_password) {
-        // Serialize directly into SecureBytes (secure memory)
         duckpass::SecureBytes plaintext = vault.serialize();
 
         crypto_handler::KdfParams kdf_params = {
@@ -219,7 +227,6 @@ namespace vault_handler {
         std::filesystem::path tmp_path = vault_path;
         tmp_path.replace_extension(vault_path.extension().string() + ".tmp");
 
-        // POSIX C: Manage File Descriptor from start to finish to prevent race conditions
         int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (fd == -1) throw duckpass::vault_io_error(tmp_path.string());
 
@@ -230,7 +237,6 @@ namespace vault_handler {
         write_all(fd, iv.data(), iv.size());
         write_all(fd, ciphertext.data(), ciphertext.size());
 
-        // Force physical write to disk before closing
         fsync(fd);
         close(fd);
 
