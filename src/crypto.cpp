@@ -1,6 +1,7 @@
 #include "duckpass/crypto.h"
 #include <stdexcept>
 #include <vector>
+#include "duckpass/exceptions.h"
 
 // OpenSSL for AES-GCM
 #include <openssl/evp.h>
@@ -77,7 +78,7 @@ namespace crypto_handler {
 
     SecureString decrypt_data(const std::vector<unsigned char> &encrypted_blob, const SecureBytes &key, const std::vector<unsigned char> &iv) {
         if (encrypted_blob.size() < TAG_BYTES) {
-            throw std::runtime_error("Invalid encrypted data: too short to contain a tag.");
+            throw duckpass::vault_corrupted_error("Encrypted data is too short.");
         }
 
         // Extract ciphertext and tag from the combined blob
@@ -109,7 +110,7 @@ namespace crypto_handler {
         // The final check happens here. If the tag is invalid, this call will fail.
         if (EVP_DecryptFinal_ex(ctx, plaintext_bytes.data() + len, &len) != 1) {
             EVP_CIPHER_CTX_free(ctx);
-            throw std::runtime_error("GCM authentication failed. Data is corrupted or password is wrong.");
+            throw duckpass::wrong_password_error();
         }
         plaintext_len += len;
 

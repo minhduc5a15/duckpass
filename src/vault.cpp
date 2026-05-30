@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "duckpass/crypto.h"
+#include "duckpass/exceptions.h"
 
 namespace vault_handler {
     bool vault_exists(const std::filesystem::path &vault_path) {
@@ -18,7 +19,16 @@ namespace vault_handler {
         // 1. Open file in binary mode
         std::ifstream file(vault_path, std::ios::binary);
         if (!file) {
-            throw std::runtime_error("Error: Could not open vault file.");
+            throw duckpass::vault_io_error(vault_path.string());
+        }
+
+        // Get file size
+        file.seekg(0, std::ios::end);
+        std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        if (size < static_cast<std::streamsize>(crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES + crypto_handler::TAG_BYTES)) {
+            throw duckpass::vault_corrupted_error("File is too small to be a valid vault.");
         }
 
         // 2. Read salt, iv, and ciphertext
@@ -60,7 +70,7 @@ namespace vault_handler {
         {
             std::ofstream file(tmp_path, std::ios::binary | std::ios::trunc);
             if (!file) {
-                throw std::runtime_error("Error: Could not open temporary vault file for writing.");
+                throw duckpass::vault_io_error(tmp_path.string());
             }
 
             file.write(reinterpret_cast<const char *>(salt.data()), static_cast<long>(salt.size()));

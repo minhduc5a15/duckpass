@@ -2,6 +2,7 @@
 #include "duckpass/vault.h"
 #include "duckpass/utils.h"
 #include "duckpass/config_handler.h"
+#include "duckpass/exceptions.h"
 #include "CLI/CLI.hpp"
 #include <iostream>
 
@@ -22,8 +23,17 @@ void list_command::setup(CLI::App& app) {
 
         try {
             vault_data = vault_handler::load_vault(vault_path, master_password);
-        } catch (const std::exception& e) {
+        } catch (const duckpass::wrong_password_error &e) {
             std::cerr << "Error: " << e.what() << std::endl;
+            return;
+        } catch (const duckpass::vault_corrupted_error &e) {
+            std::cerr << "Critical Error: " << e.what() << std::endl;
+            return;
+        } catch (const duckpass::vault_io_error &e) {
+            std::cerr << "I/O Error: " << e.what() << std::endl;
+            return;
+        } catch (const std::exception& e) {
+            std::cerr << "An unexpected error occurred: " << e.what() << std::endl;
             return;
         }
 
