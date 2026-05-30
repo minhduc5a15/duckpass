@@ -27,12 +27,12 @@ namespace crypto_handler {
         return buffer;
     }
 
-    SecureBytes derive_key_from_password(const SecureString &password, const std::vector<unsigned char> &salt) {
+    SecureBytes derive_key_from_password(const SecureString &password, const std::vector<unsigned char> &salt, const KdfParams &params) {
         SecureBytes key(KEY_BYTES);
         int result = argon2id_hash_raw(
-            ARGON2_TIME_COST,
-            ARGON2_MEMORY_COST,
-            ARGON2_PARALLELISM,
+            params.time_cost,
+            params.memory_cost,
+            params.parallelism,
             password.c_str(),
             password.length(),
             salt.data(),

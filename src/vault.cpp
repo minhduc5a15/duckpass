@@ -16,7 +16,7 @@ namespace vault_handler {
 
     void Vault::add_entry(VaultEntry entry) {
         // If entry with same service exists, replace it
-        auto it = std::find_if(entries.begin(), entries.end(), [&](const VaultEntry& e) {
+        auto it = std::ranges::find_if(entries, [&](const VaultEntry& e) {
             return e.service == entry.service;
         });
 
@@ -28,9 +28,7 @@ namespace vault_handler {
     }
 
     bool Vault::remove_entry(const SecureString& service) {
-        auto it = std::remove_if(entries.begin(), entries.end(), [&](const VaultEntry& e) {
-            return e.service == service;
-        });
+        auto it = std::ranges::remove_if(entries, [&](const VaultEntry &e) { return e.service == service; }).begin();
 
         if (it != entries.end()) {
             entries.erase(it, entries.end());
@@ -40,7 +38,7 @@ namespace vault_handler {
     }
 
     std::optional<VaultEntry> Vault::get_entry(const SecureString& service) const {
-        auto it = std::find_if(entries.begin(), entries.end(), [&](const VaultEntry& e) {
+        auto it = std::ranges::find_if(entries, [&](const VaultEntry& e) {
             return e.service == service;
         });
 
@@ -114,11 +112,17 @@ namespace vault_handler {
         std::streamsize size = file.tellg();
         file.seekg(0, std::ios::beg);
 
-        if (size < static_cast<std::streamsize>(crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES + crypto_handler::TAG_BYTES)) {
+        const size_t min_size = 3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES + crypto_handler::TAG_BYTES;
+        if (size < static_cast<std::streamsize>(min_size)) {
             throw duckpass::vault_corrupted_error("File is too small to be a valid vault.");
         }
 
-        // 2. Read salt, iv, and ciphertext
+        // 2. Read KDF parameters, salt, iv, and ciphertext
+        crypto_handler::KdfParams kdf_params;
+        file.read(reinterpret_cast<char *>(&kdf_params.time_cost), sizeof(uint32_t));
+        file.read(reinterpret_cast<char *>(&kdf_params.memory_cost), sizeof(uint32_t));
+        file.read(reinterpret_cast<char *>(&kdf_params.parallelism), sizeof(uint32_t));
+
         std::vector<unsigned char> salt(crypto_handler::SALT_BYTES);
         file.read(reinterpret_cast<char *>(salt.data()), crypto_handler::SALT_BYTES);
 
@@ -130,7 +134,7 @@ namespace vault_handler {
         file.close();
 
         // 3. Derive key and decrypt
-        crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt);
+        crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
         crypto_handler::SecureBytes plaintext_bytes = crypto_handler::decrypt_data(ciphertext, key, iv);
 
         // 4. Parse binary MessagePack to JSON
@@ -148,15 +152,20 @@ namespace vault_handler {
         crypto_handler::SecureBytes msgpack;
         duckpass::SecureJson::to_msgpack(vault_data, msgpack);
 
-        // Generate a new salt and IV for this save operation
+        // 1. Prepare KDF parameters, salt, and IV
+        crypto_handler::KdfParams kdf_params = {
+            crypto_handler::DEFAULT_TIME_COST,
+            crypto_handler::DEFAULT_MEMORY_COST,
+            crypto_handler::DEFAULT_PARALLELISM
+        };
         std::vector<unsigned char> salt = crypto_handler::generate_random_bytes(crypto_handler::SALT_BYTES);
         std::vector<unsigned char> iv = crypto_handler::generate_random_bytes(crypto_handler::IV_BYTES);
 
         std::filesystem::path tmp_path = vault_path;
         tmp_path.replace_extension(vault_path.extension().string() + ".tmp");
 
-        // Derive key and encrypt
-        crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt);
+        // 2. Derive key and encrypt
+        crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
         std::vector<unsigned char> ciphertext = crypto_handler::encrypt_data(msgpack, key, iv);
 
         {
@@ -165,6 +174,10 @@ namespace vault_handler {
                 throw duckpass::vault_io_error(tmp_path.string());
             }
 
+            // Write Header: KDF Params -> Salt -> IV -> Ciphertext
+            file.write(reinterpret_cast<const char *>(&kdf_params.time_cost), sizeof(uint32_t));
+            file.write(reinterpret_cast<const char *>(&kdf_params.memory_cost), sizeof(uint32_t));
+            file.write(reinterpret_cast<const char *>(&kdf_params.parallelism), sizeof(uint32_t));
             file.write(reinterpret_cast<const char *>(salt.data()), static_cast<long>(salt.size()));
             file.write(reinterpret_cast<const char *>(iv.data()), static_cast<long>(iv.size()));
             file.write(reinterpret_cast<const char *>(ciphertext.data()), static_cast<long>(ciphertext.size()));

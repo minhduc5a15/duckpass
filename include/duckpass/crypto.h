@@ -9,10 +9,20 @@ namespace crypto_handler {
     using duckpass::SecureString;
     using duckpass::SecureBytes;
 
-    // Constants for Argon2
-    const uint32_t ARGON2_TIME_COST = 2; // t_cost
-    const uint32_t ARGON2_MEMORY_COST = 65536; // m_cost (64 MB)
-    const uint32_t ARGON2_PARALLELISM = 1; // p_cost
+    /**
+     * @brief KDF parameters for Argon2id.
+     * Stored in the vault header for backward compatibility.
+     */
+    struct KdfParams {
+        uint32_t time_cost;
+        uint32_t memory_cost;
+        uint32_t parallelism;
+    };
+
+    // Default Argon2 constants
+    const uint32_t DEFAULT_TIME_COST = 2; 
+    const uint32_t DEFAULT_MEMORY_COST = 65536; // 64 MB
+    const uint32_t DEFAULT_PARALLELISM = 1;
 
     // Constants for AES-GCM
     const int SALT_BYTES = 16;
@@ -24,7 +34,9 @@ namespace crypto_handler {
     std::vector<unsigned char> generate_random_bytes(int num_bytes);
 
     // Derives a 256-bit key from a password and salt using Argon2id.
-    SecureBytes derive_key_from_password(const SecureString &password, const std::vector<unsigned char> &salt);
+    SecureBytes derive_key_from_password(const SecureString &password, 
+                                       const std::vector<unsigned char> &salt,
+                                       const KdfParams &params = {DEFAULT_TIME_COST, DEFAULT_MEMORY_COST, DEFAULT_PARALLELISM});
 
     // Encrypts plaintext using AES-256-GCM.
     // Returns a single vector containing [ciphertext + authentication_tag].
