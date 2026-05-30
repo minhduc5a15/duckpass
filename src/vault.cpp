@@ -169,10 +169,6 @@ namespace vault_handler {
             throw duckpass::vault_corrupted_error("KDF parameters exceed safe limits. File may have been tampered with to cause DoS.");
         }
 
-        if (kdf_params.memory_cost > MAX_MEMORY_COST || kdf_params.time_cost > MAX_TIME_COST) {
-            throw duckpass::vault_corrupted_error("KDF parameters exceed safe hardware limits. File may be tampered.");
-        }
-
         std::vector<uint8_t> salt(bytes.data() + offset, bytes.data() + offset + crypto_handler::SALT_BYTES);
         offset += crypto_handler::SALT_BYTES;
 
