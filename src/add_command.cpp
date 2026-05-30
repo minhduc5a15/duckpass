@@ -25,7 +25,7 @@ void add_command::setup(CLI::App &app) {
         config_handler config;
         auto vault_path = config.get_vault_path();
 
-        duckpass::SecureJson vault_data;
+        vault_handler::Vault vault;
         duckpass::SecureString master_password;
         bool is_new_vault = !vault_handler::vault_exists(vault_path);
 
@@ -41,7 +41,7 @@ void add_command::setup(CLI::App &app) {
         else {
             master_password = get_password_silent("Enter master password: ");
             try {
-                vault_data = vault_handler::load_vault(vault_path, master_password);
+                vault = vault_handler::load_vault(vault_path, master_password);
             } catch (const duckpass::wrong_password_error &e) {
                 std::cerr << "Error: " << e.what() << std::endl;
                 return;
@@ -57,24 +57,23 @@ void add_command::setup(CLI::App &app) {
             }
         }
 
-        if (vault_data.contains(*name)) {
+        duckpass::SecureString service_name(name->begin(), name->end());
+        if (vault.get_entry(service_name)) {
             std::cout << "Error: Entry '" << *name << "' already exists." << std::endl;
             return;
         }
 
-        // Store sensitive data as BINARY (SecureBytes) to ensure it uses the secure allocator and is wiped
-        duckpass::SecureBytes username_bytes(username->begin(), username->end());
-        duckpass::SecureBytes password_bytes(password.begin(), password.end());
+        vault_handler::VaultEntry entry;
+        entry.service = std::move(service_name);
+        entry.username = duckpass::SecureString(username->begin(), username->end());
+        entry.password = std::move(password);
 
-        vault_data[*name] = {
-            {"username", duckpass::SecureJson::binary(username_bytes)},
-            {"password", duckpass::SecureJson::binary(password_bytes)}
-        };
+        vault.add_entry(std::move(entry));
         
         std::cout << "Success: Entry '" << *name << "' added." << std::endl;
 
         try {
-            vault_handler::save_vault(vault_path, vault_data, master_password);
+            vault_handler::save_vault(vault_path, vault, master_password);
             std::cout << "Vault saved successfully to " << vault_path.string() << std::endl;
         } catch (const std::exception &e) {
             std::cerr << "Error saving vault: " << e.what() << std::endl;

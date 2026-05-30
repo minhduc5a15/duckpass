@@ -28,9 +28,9 @@ void get_command::setup(CLI::App &app) {
         }
 
         duckpass::SecureString master_password = get_password_silent("Enter master password: ");
-        duckpass::SecureJson vault_data;
+        vault_handler::Vault vault;
         try {
-            vault_data = vault_handler::load_vault(vault_path, master_password);
+            vault = vault_handler::load_vault(vault_path, master_password);
         } catch (const duckpass::wrong_password_error &e) {
             std::cerr << "Error: " << e.what() << std::endl;
             return;
@@ -45,19 +45,17 @@ void get_command::setup(CLI::App &app) {
             return;
         }
 
-        if (!vault_data.contains(*name)) {
+        duckpass::SecureString service_name(name->begin(), name->end());
+        auto entry_opt = vault.get_entry(service_name);
+
+        if (!entry_opt) {
             std::cerr << "Error: Entry '" << *name << "' not found." << std::endl;
             return;
         }
 
-        const auto &entry = vault_data[*name];
-        
-        // Extract from binary format
-        const auto& username_bin = entry.at("username").get_binary();
-        const auto& password_bin = entry.at("password").get_binary();
-
-        const duckpass::SecureString username(username_bin.begin(), username_bin.end());
-        const duckpass::SecureString password(password_bin.begin(), password_bin.end());
+        const auto &entry = *entry_opt;
+        const duckpass::SecureString& username = entry.username;
+        const duckpass::SecureString& password = entry.password;
 
         if (*copy_to_clipboard) {
             std::string temp_pass = std::string(password.begin(), password.end());
@@ -77,11 +75,13 @@ void get_command::setup(CLI::App &app) {
         else {
             std::string temp_pass = std::string(password.begin(), password.end());
             std::string temp_user = std::string(username.begin(), username.end());
-            std::cout << "Entry: " << *name << std::endl;
+            std::string temp_service = std::string(entry.service.begin(), entry.service.end());
+            std::cout << "Entry: " << temp_service << std::endl;
             std::cout << "  Username: " << temp_user << std::endl;
             std::cout << "  Password: " << temp_pass << std::endl;
             OPENSSL_cleanse(temp_pass.data(), temp_pass.length());
             OPENSSL_cleanse(temp_user.data(), temp_user.length());
+            OPENSSL_cleanse(temp_service.data(), temp_service.length());
         }
     });
 }

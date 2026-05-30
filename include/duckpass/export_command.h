@@ -2,7 +2,7 @@
 
 #include <string>
 #include <filesystem>
-#include "duckpass/json_secure.h"
+#include "duckpass/vault.h"
 
 namespace CLI {
     class App;
@@ -13,6 +13,6 @@ public:
     static void setup(CLI::App &app);
 
 private:
-    static std::string to_csv(const duckpass::SecureJson &j);
+    static std::string to_csv(const vault_handler::Vault &vault);
     static std::string escape_csv_field(const std::string &field);
 };

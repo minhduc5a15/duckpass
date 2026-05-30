@@ -20,10 +20,10 @@ void list_command::setup(CLI::App& app) {
         }
 
         duckpass::SecureString master_password = get_password_silent("Enter master password: ");
-        duckpass::SecureJson vault_data;
+        vault_handler::Vault vault;
 
         try {
-            vault_data = vault_handler::load_vault(vault_path, master_password);
+            vault = vault_handler::load_vault(vault_path, master_password);
         } catch (const duckpass::wrong_password_error &e) {
             std::cerr << "Error: " << e.what() << std::endl;
             return;
@@ -38,14 +38,17 @@ void list_command::setup(CLI::App& app) {
             return;
         }
 
-        if (vault_data.empty()) {
+        const auto& entries = vault.get_all_entries();
+        if (entries.empty()) {
             std::cout << "Vault is empty." << std::endl;
             return;
         }
 
         std::cout << "Listing all entries:" << std::endl;
-        for (auto& entry : vault_data.items()) {
-            std::cout << "- " << entry.key() << std::endl;
+        for (const auto& entry : entries) {
+            std::string temp_service(entry.service.begin(), entry.service.end());
+            std::cout << "- " << temp_service << std::endl;
+            OPENSSL_cleanse(temp_service.data(), temp_service.length());
         }
     });
 }

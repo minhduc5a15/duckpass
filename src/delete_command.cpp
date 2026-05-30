@@ -23,9 +23,9 @@ void delete_command::setup(CLI::App& app) {
         }
 
         duckpass::SecureString master_password = get_password_silent("Enter master password: ");
-        duckpass::SecureJson vault_data;
+        vault_handler::Vault vault;
         try {
-            vault_data = vault_handler::load_vault(vault_path, master_password);
+            vault = vault_handler::load_vault(vault_path, master_password);
         } catch (const duckpass::wrong_password_error &e) {
             std::cerr << "Error: " << e.what() << std::endl;
             return;
@@ -40,19 +40,18 @@ void delete_command::setup(CLI::App& app) {
             return;
         }
 
-        if (!vault_data.contains(*name)) {
+        duckpass::SecureString service_name(name->begin(), name->end());
+        if (vault.remove_entry(service_name)) {
+            std::cout << "Success: Entry '" << *name << "' has been deleted." << std::endl;
+
+            try {
+                vault_handler::save_vault(vault_path, vault, master_password);
+                std::cout << "Vault saved successfully to " << vault_path.string() << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "Error saving vault: " << e.what() << std::endl;
+            }
+        } else {
             std::cerr << "Error: Entry '" << *name << "' not found." << std::endl;
-            return;
-        }
-
-        vault_data.erase(*name);
-        std::cout << "Success: Entry '" << *name << "' has been deleted." << std::endl;
-
-        try {
-            vault_handler::save_vault(vault_path, vault_data, master_password);
-            std::cout << "Vault saved successfully to " << vault_path.string() << std::endl;
-        } catch (const std::exception& e) {
-            std::cerr << "Error saving vault: " << e.what() << std::endl;
         }
     });
 }

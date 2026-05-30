@@ -30,9 +30,9 @@ void export_command::setup(CLI::App &app) {
 
         // 1. Get password and decrypt vault
         duckpass::SecureString master_password = get_password_silent("Enter master password to export: ");
-        duckpass::SecureJson vault_data;
+        vault_handler::Vault vault;
         try {
-            vault_data = vault_handler::load_vault(vault_path, master_password);
+            vault = vault_handler::load_vault(vault_path, master_password);
         } catch (const duckpass::wrong_password_error &e) {
             std::cerr << "Error: " << e.what() << std::endl;
             return;
@@ -47,7 +47,7 @@ void export_command::setup(CLI::App &app) {
             return;
         }
 
-        if (vault_data.empty()) {
+        if (vault.get_all_entries().empty()) {
             std::cout << "Info: Vault is empty. Nothing to export." << std::endl;
             return;
         }
@@ -55,14 +55,15 @@ void export_command::setup(CLI::App &app) {
         // 2. Format data
         std::string output_data;
         if (*format == "csv") {
-            output_data = to_csv(vault_data);
+            output_data = to_csv(vault);
         }
         else if (*format == "json") {
+            duckpass::SecureJson j = vault.to_json();
             if (*pretty_print) {
-                output_data = vault_data.dump(4);
+                output_data = j.dump(4);
             }
             else {
-                output_data = vault_data.dump();
+                output_data = j.dump();
             }
         }
         else {
@@ -105,18 +106,13 @@ std::string export_command::escape_csv_field(const std::string &field) {
     return result;
 }
 
-std::string export_command::to_csv(const duckpass::SecureJson &j) {
-    std::string csv_string = "name,username,password\n";
+std::string export_command::to_csv(const vault_handler::Vault &vault) {
+    std::string csv_string = "service,username,password\n";
 
-    for (auto &el: j.items()) {
-        const std::string name = el.key();
-        
-        // Extract from binary format
-        const auto& username_bin = el.value().at("username").get_binary();
-        const auto& password_bin = el.value().at("password").get_binary();
-        
-        const std::string username(username_bin.begin(), username_bin.end());
-        const std::string password(password_bin.begin(), password_bin.end());
+    for (const auto &entry : vault.get_all_entries()) {
+        const std::string name(entry.service.begin(), entry.service.end());
+        const std::string username(entry.username.begin(), entry.username.end());
+        const std::string password(entry.password.begin(), entry.password.end());
 
         csv_string += escape_csv_field(name) + ",";
         csv_string += escape_csv_field(username) + ",";
