@@ -1,20 +1,22 @@
 #include "duckpass/crypto.h"
-#include <stdexcept>
-#include <vector>
+
 #include <memory>
 #include <span>
+#include <stdexcept>
+#include <vector>
+
 #include "duckpass/exceptions.h"
 
 // OpenSSL for AES-GCM
+#include <openssl/err.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
-#include <openssl/err.h>
 
 // Argon2 for key derivation
 #include <argon2.h>
 
 namespace crypto_handler {
-    
+
     /**
      * @brief RAII wrapper for OpenSSL's EVP_CIPHER_CTX.
      * Ensures the context is freed automatically on destruction.
@@ -32,17 +34,8 @@ namespace crypto_handler {
 
     SecureBytes derive_key_from_password(const SecureString &password, std::span<const uint8_t> salt, const KdfParams &params) {
         SecureBytes key(KEY_BYTES);
-        int result = argon2id_hash_raw(
-            params.time_cost,
-            params.memory_cost,
-            params.parallelism,
-            password.c_str(),
-            password.length(),
-            salt.data(),
-            salt.size(),
-            key.data(),
-            key.size()
-        );
+        int result = argon2id_hash_raw(params.time_cost, params.memory_cost, params.parallelism, password.c_str(), password.length(), salt.data(),
+                                       salt.size(), key.data(), key.size());
 
         if (result != ARGON2_OK) {
             throw duckpass::crypto_error("Failed to derive key from password (Argon2). Error: " + std::string(argon2_error_message(result)));
@@ -94,8 +87,8 @@ namespace crypto_handler {
         }
 
         // Extract ciphertext and tag from the combined blob
-        std::vector<unsigned char> ciphertext(encrypted_blob.begin(), encrypted_blob.end() - TAG_BYTES);
-        std::vector<unsigned char> tag(encrypted_blob.end() - TAG_BYTES, encrypted_blob.end());
+        std::span<const uint8_t> ciphertext = encrypted_blob.subspan(0, encrypted_blob.size() - TAG_BYTES);
+        std::span<const uint8_t> tag = encrypted_blob.subspan(encrypted_blob.size() - TAG_BYTES, TAG_BYTES);
 
         CipherContextPtr ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
         if (!ctx) {
@@ -109,14 +102,14 @@ namespace crypto_handler {
         }
 
         // Set the expected authentication tag. This is crucial for verification.
-        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_BYTES, tag.data()) != 1) {
+        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_BYTES, const_cast<uint8_t *>(tag.data())) != 1) {
             ERR_clear_error();
             throw duckpass::crypto_error("Failed to set GCM authentication tag.");
         }
 
         SecureBytes plaintext_bytes(ciphertext.size());
         int len = 0;
-        if (EVP_DecryptUpdate(ctx.get(), plaintext_bytes.data(), &len, ciphertext.data(), ciphertext.size()) != 1) {
+        if (EVP_DecryptUpdate(ctx.get(), plaintext_bytes.data(), &len, ciphertext.data(), static_cast<int>(ciphertext.size())) != 1) {
             ERR_clear_error();
             throw duckpass::crypto_error("Failed during GCM decryption update. Data may be corrupted.");
         }
@@ -132,4 +125,4 @@ namespace crypto_handler {
         plaintext_bytes.resize(plaintext_len);
         return plaintext_bytes;
     }
-} // namespace crypto_handler
+}  // namespace crypto_handler
