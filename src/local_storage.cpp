@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <cerrno>
+#include <cstring>
 #include <system_error>
 
 namespace duckpass::storage {
@@ -16,7 +17,7 @@ namespace duckpass::storage {
             ssize_t written = write(fd, p + total_written, count - total_written);
             if (written == -1) {
                 if (errno == EINTR) continue;
-                throw vault_io_error("POSIX write failed");
+                throw vault_io_error(std::string("POSIX write failed: ") + std::strerror(errno));
             }
             total_written += static_cast<size_t>(written);
         }
@@ -29,7 +30,7 @@ namespace duckpass::storage {
             ssize_t bytes_read = read(fd, p + total_read, count - total_read);
             if (bytes_read == -1) {
                 if (errno == EINTR) continue;
-                throw vault_io_error("POSIX read failed");
+                throw vault_io_error(std::string("POSIX read failed: ") + std::strerror(errno));
             }
             if (bytes_read == 0) {
                 throw vault_corrupted_error("Unexpected EOF while reading storage");
@@ -46,7 +47,7 @@ namespace duckpass::storage {
         uintmax_t file_size = std::filesystem::file_size(path);
         
         int fd = open(path.c_str(), O_RDONLY);
-        if (fd == -1) throw vault_io_error("Failed to open file: " + path.string());
+        if (fd == -1) throw vault_io_error(std::string("Failed to open file: ") + path.string() + " (" + std::strerror(errno) + ")");
 
         SecureBytes buffer(file_size);
         try {
@@ -65,11 +66,11 @@ namespace duckpass::storage {
         tmp_path.replace_extension(path.extension().string() + ".tmp");
 
         int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
-        if (fd == -1) throw vault_io_error("Failed to create temporary file: " + tmp_path.string());
+        if (fd == -1) throw vault_io_error(std::string("Failed to create temporary file: ") + tmp_path.string() + " (" + std::strerror(errno) + ")");
 
         try {
             write_all(fd, data.data(), data.size());
-            if (fsync(fd) == -1) throw vault_io_error("Failed to sync file to disk");
+            if (fsync(fd) == -1) throw vault_io_error(std::string("Failed to sync file to disk: ") + std::strerror(errno));
         } catch (...) {
             close(fd);
             std::filesystem::remove(tmp_path);

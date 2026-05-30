@@ -141,7 +141,8 @@ namespace vault_handler {
         // 1. Read the entire blob using the storage layer
         duckpass::SecureBytes full_blob = duckpass::storage::read_file(vault_path);
         
-        const size_t min_header_size = 3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES;
+        // Header (8 bytes: MAGIC + VERSION) + KDF (12 bytes) + Salt (16) + IV (12) + Tag (16)
+        const size_t min_header_size = 8 + 3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES;
         if (full_blob.size() < min_header_size + crypto_handler::TAG_BYTES) {
             throw duckpass::vault_corrupted_error("Vault file is truncated.");
         }
@@ -149,7 +150,18 @@ namespace vault_handler {
         std::span<const uint8_t> bytes(full_blob.data(), full_blob.size());
         size_t offset = 0;
 
-        // 2. Parse Header (KDF params, Salt, IV)
+        // 2. Check Magic Bytes and Version
+        if (bytes[offset] != 'D' || bytes[offset+1] != 'U' || bytes[offset+2] != 'C' || bytes[offset+3] != 'K') {
+            throw duckpass::vault_corrupted_error("Invalid file format: Not a DuckPass vault.");
+        }
+        offset += 4;
+
+        uint32_t version = read_uint32(bytes, offset);
+        if (version != 1) {
+            throw duckpass::vault_corrupted_error("Unsupported vault version: " + std::to_string(version));
+        }
+
+        // 3. Parse KDF parameters, Salt, and IV
         crypto_handler::KdfParams kdf_params;
         kdf_params.time_cost = read_uint32(bytes, offset);
         kdf_params.memory_cost = read_uint32(bytes, offset);
@@ -161,10 +173,10 @@ namespace vault_handler {
         std::vector<uint8_t> iv(bytes.data() + offset, bytes.data() + offset + crypto_handler::IV_BYTES);
         offset += crypto_handler::IV_BYTES;
 
-        // 3. Extract Ciphertext (including Tag)
+        // 4. Extract Ciphertext (including Tag)
         std::span<const uint8_t> ciphertext = bytes.subspan(offset);
 
-        // 4. Decrypt and Deserialize
+        // 5. Decrypt and Deserialize
         crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
         crypto_handler::SecureBytes plaintext_bytes = crypto_handler::decrypt_data(ciphertext, key, iv);
 
@@ -187,15 +199,27 @@ namespace vault_handler {
         crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
         std::vector<uint8_t> ciphertext = crypto_handler::encrypt_data(plaintext, key, iv);
 
-        // 3. Package the full blob [Header][Salt][IV][Ciphertext+Tag]
+        // 3. Package the full blob [MAGIC][VERSION][KDF_PARAMS][SALT][IV][CIPHERTEXT+TAG]
         duckpass::SecureBytes full_package;
-        full_package.reserve(3 * sizeof(uint32_t) + salt.size() + iv.size() + ciphertext.size());
+        full_package.reserve(8 + 3 * sizeof(uint32_t) + salt.size() + iv.size() + ciphertext.size());
 
+        // Magic Bytes "DUCK"
+        full_package.push_back('D'); full_package.push_back('U');
+        full_package.push_back('C'); full_package.push_back('K');
+        
+        // Version 1
+        write_uint32(full_package, 1);
+
+        // KDF Params
         write_uint32(full_package, kdf_params.time_cost);
         write_uint32(full_package, kdf_params.memory_cost);
         write_uint32(full_package, kdf_params.parallelism);
+
+        // Salt and IV
         full_package.insert(full_package.end(), salt.begin(), salt.end());
         full_package.insert(full_package.end(), iv.begin(), iv.end());
+
+        // Ciphertext (includes authentication tag)
         full_package.insert(full_package.end(), ciphertext.begin(), ciphertext.end());
 
         // 4. Delegate disk I/O to storage layer
