@@ -18,12 +18,6 @@
 
 namespace vault_handler {
 
-    /**
-     * @brief Concept to ensure types are safe for raw memory operations.
-     */
-    template <typename T>
-    concept TriviallyCopyable = std::is_trivially_copyable_v<T>;
-
     // --- Internal Low-Level Robust POSIX I/O Helpers ---
 
     void write_all(int fd, const void* buf, size_t count) {
@@ -55,42 +49,45 @@ namespace vault_handler {
         }
     }
 
-    // --- Generic Binary Serialization Helpers using C++20 Concepts ---
+    // --- Endian-Aware Binary Serialization Helpers (Little-Endian) ---
 
     /**
-     * @brief Writes a trivially copyable object to the buffer.
+     * @brief Writes a uint32_t to the buffer in Little-Endian format.
      */
-    template <TriviallyCopyable T>
-    void write_data(duckpass::SecureBytes& buffer, const T& value) {
-        const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&value);
-        buffer.insert(buffer.end(), bytes, bytes + sizeof(T));
+    void write_uint32(duckpass::SecureBytes& buffer, uint32_t value) {
+        buffer.push_back(static_cast<uint8_t>(value & 0xFF));
+        buffer.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+        buffer.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+        buffer.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
     }
 
     /**
-     * @brief Writes a string to the buffer: [length (4 bytes)] + [raw data].
+     * @brief Writes a string to the buffer: [length (4 bytes, LE)] + [raw data].
      */
-    void write_data(duckpass::SecureBytes& buffer, const duckpass::SecureString& str) {
-        write_data(buffer, static_cast<uint32_t>(str.length()));
+    void write_string(duckpass::SecureBytes& buffer, const duckpass::SecureString& str) {
+        write_uint32(buffer, static_cast<uint32_t>(str.length()));
         buffer.insert(buffer.end(), str.begin(), str.end());
     }
 
     /**
-     * @brief Reads a trivially copyable object from a span.
+     * @brief Reads a uint32_t from a span in Little-Endian format.
      */
-    template <TriviallyCopyable T>
-    T read_data(std::span<const uint8_t> bytes, size_t& offset) {
-        if (offset + sizeof(T) > bytes.size()) throw std::runtime_error("Malformed vault data");
-        T value;
-        std::memcpy(&value, bytes.data() + offset, sizeof(T));
-        offset += sizeof(T);
+    uint32_t read_uint32(std::span<const uint8_t> bytes, size_t& offset) {
+        if (offset + 4 > bytes.size()) throw std::runtime_error("Malformed vault data");
+        uint32_t value = 0;
+        value |= static_cast<uint32_t>(bytes[offset]);
+        value |= static_cast<uint32_t>(bytes[offset + 1]) << 8;
+        value |= static_cast<uint32_t>(bytes[offset + 2]) << 16;
+        value |= static_cast<uint32_t>(bytes[offset + 3]) << 24;
+        offset += 4;
         return value;
     }
 
     /**
      * @brief Reads a string from a span.
      */
-    duckpass::SecureString read_string_data(std::span<const uint8_t> bytes, size_t& offset) {
-        uint32_t length = read_data<uint32_t>(bytes, offset);
+    duckpass::SecureString read_string(std::span<const uint8_t> bytes, size_t& offset) {
+        uint32_t length = read_uint32(bytes, offset);
         if (offset + length > bytes.size()) throw std::runtime_error("Malformed vault data");
         
         duckpass::SecureString str;
@@ -142,12 +139,12 @@ namespace vault_handler {
         duckpass::SecureBytes buffer;
         
         // Write entry count at the beginning
-        write_data(buffer, static_cast<uint32_t>(entries.size()));
+        write_uint32(buffer, static_cast<uint32_t>(entries.size()));
 
         for (const auto& entry : entries) {
-            write_data(buffer, entry.service);
-            write_data(buffer, entry.username);
-            write_data(buffer, entry.password);
+            write_string(buffer, entry.service);
+            write_string(buffer, entry.username);
+            write_string(buffer, entry.password);
         }
         return buffer;
     }
@@ -158,12 +155,12 @@ namespace vault_handler {
         size_t offset = 0;
         if (bytes.empty()) return vault;
 
-        uint32_t num_entries = read_data<uint32_t>(bytes, offset);
+        uint32_t num_entries = read_uint32(bytes, offset);
         for (uint32_t i = 0; i < num_entries; ++i) {
             VaultEntry entry;
-            entry.service = read_string_data(bytes, offset);
-            entry.username = read_string_data(bytes, offset);
-            entry.password = read_string_data(bytes, offset);
+            entry.service = read_string(bytes, offset);
+            entry.username = read_string(bytes, offset);
+            entry.password = read_string(bytes, offset);
             vault.add_entry(std::move(entry));
         }
         return vault;
@@ -188,10 +185,18 @@ namespace vault_handler {
             throw duckpass::vault_corrupted_error("File is too small.");
         }
 
+        // Read KDF parameters as raw bytes and convert from Little-Endian
+        uint8_t kdf_buf[4];
         crypto_handler::KdfParams kdf_params;
-        read_all(fd, &kdf_params.time_cost, sizeof(uint32_t));
-        read_all(fd, &kdf_params.memory_cost, sizeof(uint32_t));
-        read_all(fd, &kdf_params.parallelism, sizeof(uint32_t));
+        
+        read_all(fd, kdf_buf, 4);
+        kdf_params.time_cost = kdf_buf[0] | (kdf_buf[1] << 8) | (kdf_buf[2] << 16) | (kdf_buf[3] << 24);
+        
+        read_all(fd, kdf_buf, 4);
+        kdf_params.memory_cost = kdf_buf[0] | (kdf_buf[1] << 8) | (kdf_buf[2] << 16) | (kdf_buf[3] << 24);
+        
+        read_all(fd, kdf_buf, 4);
+        kdf_params.parallelism = kdf_buf[0] | (kdf_buf[1] << 8) | (kdf_buf[2] << 16) | (kdf_buf[3] << 24);
 
         std::vector<unsigned char> salt(crypto_handler::SALT_BYTES);
         read_all(fd, salt.data(), crypto_handler::SALT_BYTES);
@@ -230,9 +235,20 @@ namespace vault_handler {
         int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (fd == -1) throw duckpass::vault_io_error(tmp_path.string());
 
-        write_all(fd, &kdf_params.time_cost, sizeof(uint32_t));
-        write_all(fd, &kdf_params.memory_cost, sizeof(uint32_t));
-        write_all(fd, &kdf_params.parallelism, sizeof(uint32_t));
+        // Helper to write uint32 as Little-Endian to file
+        auto write_le = [&](uint32_t val) {
+            uint8_t buf[4];
+            buf[0] = static_cast<uint8_t>(val & 0xFF);
+            buf[1] = static_cast<uint8_t>((val >> 8) & 0xFF);
+            buf[2] = static_cast<uint8_t>((val >> 16) & 0xFF);
+            buf[3] = static_cast<uint8_t>((val >> 24) & 0xFF);
+            write_all(fd, buf, 4);
+        };
+
+        write_le(kdf_params.time_cost);
+        write_le(kdf_params.memory_cost);
+        write_le(kdf_params.parallelism);
+        
         write_all(fd, salt.data(), salt.size());
         write_all(fd, iv.data(), iv.size());
         write_all(fd, ciphertext.data(), ciphertext.size());
