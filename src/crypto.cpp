@@ -25,7 +25,7 @@ namespace crypto_handler {
         std::vector<unsigned char> buffer(num_bytes);
         if (RAND_bytes(buffer.data(), num_bytes) != 1) {
             ERR_clear_error();
-            throw std::runtime_error("Failed to generate random bytes.");
+            throw duckpass::crypto_error("Failed to generate random bytes.");
         }
         return buffer;
     }
@@ -45,7 +45,7 @@ namespace crypto_handler {
         );
 
         if (result != ARGON2_OK) {
-            throw std::runtime_error("Failed to derive key from password (Argon2). Error: " + std::string(argon2_error_message(result)));
+            throw duckpass::crypto_error("Failed to derive key from password (Argon2). Error: " + std::string(argon2_error_message(result)));
         }
         return key;
     }
@@ -54,25 +54,25 @@ namespace crypto_handler {
         CipherContextPtr ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
         if (!ctx) {
             ERR_clear_error();
-            throw std::runtime_error("Failed to create cipher context.");
+            throw duckpass::crypto_error("Failed to create cipher context.");
         }
 
         if (EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, key.data(), iv.data()) != 1) {
             ERR_clear_error();
-            throw std::runtime_error("Failed to initialize GCM encryption.");
+            throw duckpass::crypto_error("Failed to initialize GCM encryption.");
         }
 
         std::vector<unsigned char> ciphertext(plaintext.size());
         int len = 0;
         if (EVP_EncryptUpdate(ctx.get(), ciphertext.data(), &len, plaintext.data(), plaintext.size()) != 1) {
             ERR_clear_error();
-            throw std::runtime_error("Failed during GCM encryption update.");
+            throw duckpass::crypto_error("Failed during GCM encryption update.");
         }
         int ciphertext_len = len;
 
         if (EVP_EncryptFinal_ex(ctx.get(), ciphertext.data() + len, &len) != 1) {
             ERR_clear_error();
-            throw std::runtime_error("Failed during GCM encryption finalization.");
+            throw duckpass::crypto_error("Failed during GCM encryption finalization.");
         }
         ciphertext_len += len;
         ciphertext.resize(ciphertext_len);
@@ -80,7 +80,7 @@ namespace crypto_handler {
         std::vector<unsigned char> tag(TAG_BYTES);
         if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_GET_TAG, TAG_BYTES, tag.data()) != 1) {
             ERR_clear_error();
-            throw std::runtime_error("Failed to get GCM authentication tag.");
+            throw duckpass::crypto_error("Failed to get GCM authentication tag.");
         }
 
         // Append the tag to the ciphertext
@@ -100,25 +100,25 @@ namespace crypto_handler {
         CipherContextPtr ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
         if (!ctx) {
             ERR_clear_error();
-            throw std::runtime_error("Failed to create cipher context.");
+            throw duckpass::crypto_error("Failed to create cipher context.");
         }
 
         if (EVP_DecryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, key.data(), iv.data()) != 1) {
             ERR_clear_error();
-            throw std::runtime_error("Failed to initialize GCM decryption.");
+            throw duckpass::crypto_error("Failed to initialize GCM decryption.");
         }
 
         // Set the expected authentication tag. This is crucial for verification.
         if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_BYTES, tag.data()) != 1) {
             ERR_clear_error();
-            throw std::runtime_error("Failed to set GCM authentication tag.");
+            throw duckpass::crypto_error("Failed to set GCM authentication tag.");
         }
 
         SecureBytes plaintext_bytes(ciphertext.size());
         int len = 0;
         if (EVP_DecryptUpdate(ctx.get(), plaintext_bytes.data(), &len, ciphertext.data(), ciphertext.size()) != 1) {
             ERR_clear_error();
-            throw std::runtime_error("Failed during GCM decryption update. Data may be corrupted.");
+            throw duckpass::crypto_error("Failed during GCM decryption update. Data may be corrupted.");
         }
         int plaintext_len = len;
 

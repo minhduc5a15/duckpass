@@ -27,4 +27,10 @@ namespace duckpass {
             : duckpass_error("Failed to read or write vault file: " + path) {}
     };
 
+    class crypto_error : public duckpass_error {
+    public:
+        explicit crypto_error(const std::string& message)
+            : duckpass_error("Crypto Operation Failed: " + message) {}
+    };
+
 } // namespace duckpass
