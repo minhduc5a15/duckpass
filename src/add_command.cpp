@@ -3,6 +3,7 @@
 #include "duckpass/utils.h"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
+#include "duckpass/json_secure.h"
 #include "CLI/CLI.hpp"
 #include <iostream>
 
@@ -24,7 +25,7 @@ void add_command::setup(CLI::App &app) {
         config_handler config;
         auto vault_path = config.get_vault_path();
 
-        nlohmann::json vault_data;
+        duckpass::SecureJson vault_data;
         duckpass::SecureString master_password;
         bool is_new_vault = !vault_handler::vault_exists(vault_path);
 
@@ -61,12 +62,14 @@ void add_command::setup(CLI::App &app) {
             return;
         }
 
-        std::string temp_entry_password = std::string(password.begin(), password.end());
+        // Store sensitive data as BINARY (SecureBytes) to ensure it uses the secure allocator and is wiped
+        duckpass::SecureBytes username_bytes(username->begin(), username->end());
+        duckpass::SecureBytes password_bytes(password.begin(), password.end());
+
         vault_data[*name] = {
-            {"username", *username},
-            {"password", temp_entry_password}
+            {"username", duckpass::SecureJson::binary(username_bytes)},
+            {"password", duckpass::SecureJson::binary(password_bytes)}
         };
-        OPENSSL_cleanse(temp_entry_password.data(), temp_entry_password.length());
         
         std::cout << "Success: Entry '" << *name << "' added." << std::endl;
 

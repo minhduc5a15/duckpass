@@ -3,6 +3,7 @@
 #include "duckpass/utils.h"
 #include "duckpass/vault.h"
 #include "duckpass/exceptions.h"
+#include "duckpass/json_secure.h"
 #include "CLI/CLI.hpp"
 #include <iostream>
 #include <fstream>
@@ -29,7 +30,7 @@ void export_command::setup(CLI::App &app) {
 
         // 1. Get password and decrypt vault
         duckpass::SecureString master_password = get_password_silent("Enter master password to export: ");
-        nlohmann::json vault_data;
+        duckpass::SecureJson vault_data;
         try {
             vault_data = vault_handler::load_vault(vault_path, master_password);
         } catch (const duckpass::wrong_password_error &e) {
@@ -104,13 +105,18 @@ std::string export_command::escape_csv_field(const std::string &field) {
     return result;
 }
 
-std::string export_command::to_csv(const nlohmann::json &j) {
+std::string export_command::to_csv(const duckpass::SecureJson &j) {
     std::string csv_string = "name,username,password\n";
 
     for (auto &el: j.items()) {
-        const std::string &name = el.key();
-        const std::string &username = el.value().value("username", "");
-        const std::string &password = el.value().value("password", "");
+        const std::string name = el.key();
+        
+        // Extract from binary format
+        const auto& username_bin = el.value().at("username").get_binary();
+        const auto& password_bin = el.value().at("password").get_binary();
+        
+        const std::string username(username_bin.begin(), username_bin.end());
+        const std::string password(password_bin.begin(), password_bin.end());
 
         csv_string += escape_csv_field(name) + ",";
         csv_string += escape_csv_field(username) + ",";

@@ -3,6 +3,7 @@
 #include "duckpass/utils.h"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
+#include "duckpass/json_secure.h"
 #include "CLI/CLI.hpp"
 #include <iostream>
 
@@ -22,7 +23,7 @@ void delete_command::setup(CLI::App& app) {
         }
 
         duckpass::SecureString master_password = get_password_silent("Enter master password: ");
-        nlohmann::json vault_data;
+        duckpass::SecureJson vault_data;
         try {
             vault_data = vault_handler::load_vault(vault_path, master_password);
         } catch (const duckpass::wrong_password_error &e) {

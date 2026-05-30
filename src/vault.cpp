@@ -15,7 +15,7 @@ namespace vault_handler {
         return file.good();
     }
 
-    nlohmann::json load_vault(const std::filesystem::path &vault_path, const SecureString &master_password) {
+    duckpass::SecureJson load_vault(const std::filesystem::path &vault_path, const SecureString &master_password) {
         // 1. Open file in binary mode
         std::ifstream file(vault_path, std::ios::binary);
         if (!file) {
@@ -47,12 +47,12 @@ namespace vault_handler {
         crypto_handler::SecureBytes plaintext_bytes = crypto_handler::decrypt_data(ciphertext, key, iv);
 
         // 4. Parse binary MessagePack to JSON
-        return nlohmann::json::from_msgpack(plaintext_bytes.begin(), plaintext_bytes.end());
+        return duckpass::SecureJson::from_msgpack(plaintext_bytes.begin(), plaintext_bytes.end());
     }
 
-    void save_vault(const std::filesystem::path &vault_path, const nlohmann::json &vault_data, const SecureString &master_password) {
+    void save_vault(const std::filesystem::path &vault_path, const duckpass::SecureJson &vault_data, const SecureString &master_password) {
         // Serialize JSON data to MessagePack (binary)
-        std::vector<uint8_t> msgpack = nlohmann::json::to_msgpack(vault_data);
+        std::vector<uint8_t> msgpack = duckpass::SecureJson::to_msgpack(vault_data);
         crypto_handler::SecureBytes plaintext(msgpack.begin(), msgpack.end());
         OPENSSL_cleanse(msgpack.data(), msgpack.size());
 

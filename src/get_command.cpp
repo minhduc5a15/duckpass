@@ -4,6 +4,7 @@
 #include "duckpass/config_handler.h"
 #include "duckpass/clipboard_handler.h"
 #include "duckpass/exceptions.h"
+#include "duckpass/json_secure.h"
 #include "CLI/CLI.hpp"
 #include <iostream>
 #include <chrono>
@@ -27,7 +28,7 @@ void get_command::setup(CLI::App &app) {
         }
 
         duckpass::SecureString master_password = get_password_silent("Enter master password: ");
-        nlohmann::json vault_data;
+        duckpass::SecureJson vault_data;
         try {
             vault_data = vault_handler::load_vault(vault_path, master_password);
         } catch (const duckpass::wrong_password_error &e) {
@@ -50,10 +51,13 @@ void get_command::setup(CLI::App &app) {
         }
 
         const auto &entry = vault_data[*name];
-        const std::string username = entry.value("username", "");
-        std::string password_raw = entry.value("password", "");
-        duckpass::SecureString password(password_raw.begin(), password_raw.end());
-        OPENSSL_cleanse(password_raw.data(), password_raw.length());
+        
+        // Extract from binary format
+        const auto& username_bin = entry.at("username").get_binary();
+        const auto& password_bin = entry.at("password").get_binary();
+
+        const duckpass::SecureString username(username_bin.begin(), username_bin.end());
+        const duckpass::SecureString password(password_bin.begin(), password_bin.end());
 
         if (*copy_to_clipboard) {
             std::string temp_pass = std::string(password.begin(), password.end());
@@ -72,10 +76,12 @@ void get_command::setup(CLI::App &app) {
         }
         else {
             std::string temp_pass = std::string(password.begin(), password.end());
+            std::string temp_user = std::string(username.begin(), username.end());
             std::cout << "Entry: " << *name << std::endl;
-            std::cout << "  Username: " << username << std::endl;
+            std::cout << "  Username: " << temp_user << std::endl;
             std::cout << "  Password: " << temp_pass << std::endl;
             OPENSSL_cleanse(temp_pass.data(), temp_pass.length());
+            OPENSSL_cleanse(temp_user.data(), temp_user.length());
         }
     });
 }

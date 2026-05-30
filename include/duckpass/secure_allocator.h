@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <map>
 #include <openssl/crypto.h>
 
 namespace duckpass {
