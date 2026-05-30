@@ -51,10 +51,10 @@ namespace vault_handler {
     }
 
     void save_vault(const std::filesystem::path &vault_path, const duckpass::SecureJson &vault_data, const SecureString &master_password) {
-        // Serialize JSON data to MessagePack (binary)
-        std::vector<uint8_t> msgpack = duckpass::SecureJson::to_msgpack(vault_data);
-        crypto_handler::SecureBytes plaintext(msgpack.begin(), msgpack.end());
-        OPENSSL_cleanse(msgpack.data(), msgpack.size());
+        // Serialize JSON data to MessagePack (binary) directly into SecureBytes.
+        // This ensures that any reallocations during serialization are wiped by our secure_allocator.
+        crypto_handler::SecureBytes msgpack;
+        duckpass::SecureJson::to_msgpack(vault_data, msgpack);
 
         // Generate a new salt and IV for this save operation
         std::vector<unsigned char> salt = crypto_handler::generate_random_bytes(crypto_handler::SALT_BYTES);
@@ -65,7 +65,7 @@ namespace vault_handler {
 
         // Derive key and encrypt
         crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt);
-        std::vector<unsigned char> ciphertext = crypto_handler::encrypt_data(plaintext, key, iv);
+        std::vector<unsigned char> ciphertext = crypto_handler::encrypt_data(msgpack, key, iv);
 
         {
             std::ofstream file(tmp_path, std::ios::binary | std::ios::trunc);
