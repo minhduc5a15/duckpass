@@ -3,7 +3,6 @@
 #include "duckpass/utils.h"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
-#include "duckpass/json_secure.h"
 #include "CLI/CLI.hpp"
 #include <iostream>
 

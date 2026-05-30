@@ -1,7 +1,7 @@
 #pragma once
 
-#include "nlohmann/json.hpp"
 #include <filesystem>
+#include <string>
 
 class config_handler {
 public:
@@ -11,9 +11,5 @@ public:
     std::filesystem::path get_vault_path() const;
 
 private:
-    void load_or_create_default();
-    void create_default_config();
-
-    std::filesystem::path config_file_path_;
-    nlohmann::json config_data_;
+    std::filesystem::path vault_path_;
 };

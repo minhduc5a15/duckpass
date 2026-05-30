@@ -4,12 +4,11 @@
 #include <filesystem>
 #include <vector>
 #include <optional>
-#include "duckpass/json_secure.h"
+#include <span>
 #include "duckpass/secure_allocator.h"
 
 namespace vault_handler {
     using duckpass::SecureString;
-    using duckpass::SecureJson;
     using duckpass::secure_allocator;
     
     const std::string VAULT_PATH = ".duckvault";
@@ -37,9 +36,9 @@ namespace vault_handler {
         std::optional<VaultEntry> get_entry(const SecureString& service) const;
         const EntryContainer& get_all_entries() const { return entries; }
 
-        // Serialization helpers
-        SecureJson to_json() const;
-        static Vault from_json(const SecureJson& json);
+        // MODULE TỰ VIẾT THAY THẾ JSON
+        duckpass::SecureBytes serialize() const;
+        static Vault deserialize(std::span<const uint8_t> bytes);
 
     private:
         EntryContainer entries;

@@ -3,7 +3,6 @@
 #include "duckpass/utils.h"
 #include "duckpass/vault.h"
 #include "duckpass/exceptions.h"
-#include "duckpass/json_secure.h"
 #include "CLI/CLI.hpp"
 #include <iostream>
 #include <fstream>
@@ -58,13 +57,24 @@ void export_command::setup(CLI::App &app) {
             output_data = to_csv(vault);
         }
         else if (*format == "json") {
-            duckpass::SecureJson j = vault.to_json();
-            if (*pretty_print) {
-                output_data = j.dump(4);
+            std::string json = "[\n";
+            const auto& entries = vault.get_all_entries();
+            for (size_t i = 0; i < entries.size(); ++i) {
+                const auto& entry = entries[i];
+                std::string s(entry.service.begin(), entry.service.end());
+                std::string u(entry.username.begin(), entry.username.end());
+                std::string p(entry.password.begin(), entry.password.end());
+                
+                json += "  {\n";
+                json += "    \"service\": \"" + s + "\",\n";
+                json += "    \"username\": \"" + u + "\",\n";
+                json += "    \"password\": \"" + p + "\"\n";
+                json += "  }";
+                if (i < entries.size() - 1) json += ",";
+                json += "\n";
             }
-            else {
-                output_data = j.dump();
-            }
+            json += "]";
+            output_data = json;
         }
         else {
             std::cerr << "Error: Invalid format '" << *format << "'. Please use 'csv' or 'json'." << std::endl;
