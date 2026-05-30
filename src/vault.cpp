@@ -12,42 +12,9 @@
 
 #include "duckpass/crypto.h"
 #include "duckpass/exceptions.h"
-
-#include <unistd.h>
-#include <fcntl.h>
+#include "duckpass/local_storage.h"
 
 namespace vault_handler {
-
-    // --- Internal Low-Level Robust POSIX I/O Helpers ---
-
-    void write_all(int fd, const void* buf, size_t count) {
-        size_t total_written = 0;
-        const uint8_t* p = static_cast<const uint8_t*>(buf);
-        while (total_written < count) {
-            ssize_t written = write(fd, p + total_written, count - total_written);
-            if (written == -1) {
-                if (errno == EINTR) continue;
-                throw duckpass::vault_io_error("POSIX write failed");
-            }
-            total_written += static_cast<size_t>(written);
-        }
-    }
-
-    void read_all(int fd, void* buf, size_t count) {
-        size_t total_read = 0;
-        uint8_t* p = static_cast<uint8_t*>(buf);
-        while (total_read < count) {
-            ssize_t bytes_read = read(fd, p + total_read, count - total_read);
-            if (bytes_read == -1) {
-                if (errno == EINTR) continue;
-                throw duckpass::vault_io_error("POSIX read failed");
-            }
-            if (bytes_read == 0) {
-                throw duckpass::vault_corrupted_error("Unexpected EOF");
-            }
-            total_read += static_cast<size_t>(bytes_read);
-        }
-    }
 
     // --- Endian-Aware Binary Serialization Helpers (Little-Endian) ---
 
@@ -134,11 +101,9 @@ namespace vault_handler {
         return std::nullopt;
     }
 
-    // Serializes vault data into a binary format without external libraries
+    // Serializes vault entries into a binary format
     duckpass::SecureBytes Vault::serialize() const {
         duckpass::SecureBytes buffer;
-        
-        // Write entry count at the beginning
         write_uint32(buffer, static_cast<uint32_t>(entries.size()));
 
         for (const auto& entry : entries) {
@@ -149,7 +114,7 @@ namespace vault_handler {
         return buffer;
     }
 
-    // Deserializes binary data back into a Vault object using C++20 span
+    // Deserializes binary data back into a Vault object
     Vault Vault::deserialize(std::span<const uint8_t> bytes) {
         Vault vault;
         size_t offset = 0;
@@ -166,101 +131,74 @@ namespace vault_handler {
         return vault;
     }
 
-    // --- Vault File Operations ---
+    // --- Vault Orchestration (Crypto + Storage) ---
 
     bool vault_exists(const std::filesystem::path &vault_path) {
         return std::filesystem::exists(vault_path);
     }
 
     Vault load_vault(const std::filesystem::path &vault_path, const SecureString &master_password) {
-        int fd = open(vault_path.c_str(), O_RDONLY);
-        if (fd == -1) throw duckpass::vault_io_error(vault_path.string());
-
-        off_t size = lseek(fd, 0, SEEK_END);
-        lseek(fd, 0, SEEK_SET);
-
-        const size_t min_size = 3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES + crypto_handler::TAG_BYTES;
-        if (size < static_cast<off_t>(min_size)) {
-            close(fd);
-            throw duckpass::vault_corrupted_error("File is too small.");
+        // 1. Read the entire blob using the storage layer
+        duckpass::SecureBytes full_blob = duckpass::storage::read_file(vault_path);
+        
+        const size_t min_header_size = 3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES;
+        if (full_blob.size() < min_header_size + crypto_handler::TAG_BYTES) {
+            throw duckpass::vault_corrupted_error("Vault file is truncated.");
         }
 
-        // Read KDF parameters as raw bytes and convert from Little-Endian
-        uint8_t kdf_buf[4];
+        std::span<const uint8_t> bytes(full_blob.data(), full_blob.size());
+        size_t offset = 0;
+
+        // 2. Parse Header (KDF params, Salt, IV)
         crypto_handler::KdfParams kdf_params;
-        
-        read_all(fd, kdf_buf, 4);
-        kdf_params.time_cost = kdf_buf[0] | (kdf_buf[1] << 8) | (kdf_buf[2] << 16) | (kdf_buf[3] << 24);
-        
-        read_all(fd, kdf_buf, 4);
-        kdf_params.memory_cost = kdf_buf[0] | (kdf_buf[1] << 8) | (kdf_buf[2] << 16) | (kdf_buf[3] << 24);
-        
-        read_all(fd, kdf_buf, 4);
-        kdf_params.parallelism = kdf_buf[0] | (kdf_buf[1] << 8) | (kdf_buf[2] << 16) | (kdf_buf[3] << 24);
+        kdf_params.time_cost = read_uint32(bytes, offset);
+        kdf_params.memory_cost = read_uint32(bytes, offset);
+        kdf_params.parallelism = read_uint32(bytes, offset);
 
-        std::vector<unsigned char> salt(crypto_handler::SALT_BYTES);
-        read_all(fd, salt.data(), crypto_handler::SALT_BYTES);
+        std::vector<uint8_t> salt(bytes.data() + offset, bytes.data() + offset + crypto_handler::SALT_BYTES);
+        offset += crypto_handler::SALT_BYTES;
 
-        std::vector<unsigned char> iv(crypto_handler::IV_BYTES);
-        read_all(fd, iv.data(), crypto_handler::IV_BYTES);
+        std::vector<uint8_t> iv(bytes.data() + offset, bytes.data() + offset + crypto_handler::IV_BYTES);
+        offset += crypto_handler::IV_BYTES;
 
-        std::vector<unsigned char> ciphertext(size - (3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES));
-        read_all(fd, ciphertext.data(), ciphertext.size());
-        close(fd);
+        // 3. Extract Ciphertext (including Tag)
+        std::span<const uint8_t> ciphertext = bytes.subspan(offset);
 
+        // 4. Decrypt and Deserialize
         crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
         crypto_handler::SecureBytes plaintext_bytes = crypto_handler::decrypt_data(ciphertext, key, iv);
 
-        std::span<const uint8_t> data_span(reinterpret_cast<const uint8_t*>(plaintext_bytes.data()), plaintext_bytes.size());
-        return Vault::deserialize(data_span);
+        return Vault::deserialize(plaintext_bytes);
     }
 
     void save_vault(const std::filesystem::path &vault_path, const Vault &vault, const SecureString &master_password) {
+        // 1. Serialize entries
         duckpass::SecureBytes plaintext = vault.serialize();
 
+        // 2. Prepare Crypto
         crypto_handler::KdfParams kdf_params = {
             crypto_handler::DEFAULT_TIME_COST,
             crypto_handler::DEFAULT_MEMORY_COST,
             crypto_handler::DEFAULT_PARALLELISM
         };
-        std::vector<unsigned char> salt = crypto_handler::generate_random_bytes(crypto_handler::SALT_BYTES);
-        std::vector<unsigned char> iv = crypto_handler::generate_random_bytes(crypto_handler::IV_BYTES);
+        std::vector<uint8_t> salt = crypto_handler::generate_random_bytes(crypto_handler::SALT_BYTES);
+        std::vector<uint8_t> iv = crypto_handler::generate_random_bytes(crypto_handler::IV_BYTES);
 
         crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
-        std::vector<unsigned char> ciphertext = crypto_handler::encrypt_data(plaintext, key, iv);
+        std::vector<uint8_t> ciphertext = crypto_handler::encrypt_data(plaintext, key, iv);
 
-        std::filesystem::path tmp_path = vault_path;
-        tmp_path.replace_extension(vault_path.extension().string() + ".tmp");
+        // 3. Package the full blob [Header][Salt][IV][Ciphertext+Tag]
+        duckpass::SecureBytes full_package;
+        full_package.reserve(3 * sizeof(uint32_t) + salt.size() + iv.size() + ciphertext.size());
 
-        int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
-        if (fd == -1) throw duckpass::vault_io_error(tmp_path.string());
+        write_uint32(full_package, kdf_params.time_cost);
+        write_uint32(full_package, kdf_params.memory_cost);
+        write_uint32(full_package, kdf_params.parallelism);
+        full_package.insert(full_package.end(), salt.begin(), salt.end());
+        full_package.insert(full_package.end(), iv.begin(), iv.end());
+        full_package.insert(full_package.end(), ciphertext.begin(), ciphertext.end());
 
-        // Helper to write uint32 as Little-Endian to file
-        auto write_le = [&](uint32_t val) {
-            uint8_t buf[4];
-            buf[0] = static_cast<uint8_t>(val & 0xFF);
-            buf[1] = static_cast<uint8_t>((val >> 8) & 0xFF);
-            buf[2] = static_cast<uint8_t>((val >> 16) & 0xFF);
-            buf[3] = static_cast<uint8_t>((val >> 24) & 0xFF);
-            write_all(fd, buf, 4);
-        };
-
-        write_le(kdf_params.time_cost);
-        write_le(kdf_params.memory_cost);
-        write_le(kdf_params.parallelism);
-        
-        write_all(fd, salt.data(), salt.size());
-        write_all(fd, iv.data(), iv.size());
-        write_all(fd, ciphertext.data(), ciphertext.size());
-
-        fsync(fd);
-        close(fd);
-
-        try {
-            std::filesystem::rename(tmp_path, vault_path);
-        } catch (const std::filesystem::filesystem_error &e) {
-            std::filesystem::remove(tmp_path);
-            throw std::runtime_error("Failed to safely replace vault file.");
-        }
+        // 4. Delegate disk I/O to storage layer
+        duckpass::storage::write_file_atomic(vault_path, full_package);
     }
 }  // namespace vault_handler

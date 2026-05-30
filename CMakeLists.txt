@@ -23,6 +23,7 @@ set(SOURCES
     src/generate_command.cpp
     src/get_command.cpp
     src/list_command.cpp
+    src/local_storage.cpp
     src/main.cpp
     src/utils.cpp
     src/vault.cpp
