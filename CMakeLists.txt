@@ -14,19 +14,19 @@ pkg_check_modules(ARGON2 REQUIRED libargon2)
 
 # Explicitly list all source files
 set(SOURCES
-    src/add_command.cpp
-    src/clipboard_handler.cpp
-    src/config_handler.cpp
-    src/crypto.cpp
-    src/delete_command.cpp
-    src/export_command.cpp
-    src/generate_command.cpp
-    src/get_command.cpp
-    src/list_command.cpp
-    src/local_storage.cpp
-    src/main.cpp
-    src/utils.cpp
-    src/vault.cpp
+        src/add_command.cpp
+        src/clipboard_handler.cpp
+        src/config_handler.cpp
+        src/crypto.cpp
+        src/delete_command.cpp
+        src/export_command.cpp
+        src/generate_command.cpp
+        src/get_command.cpp
+        src/list_command.cpp
+        src/local_storage.cpp
+        src/main.cpp
+        src/utils.cpp
+        src/vault.cpp
 )
 
 # Create the executable from our source files
