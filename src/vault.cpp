@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstring>
 #include <span>
+#include <cerrno>
 
 #include "duckpass/crypto.h"
 #include "duckpass/exceptions.h"
@@ -15,6 +16,37 @@
 #include <fcntl.h>
 
 namespace vault_handler {
+
+    // --- Internal Low-Level Robust POSIX I/O Helpers ---
+
+    void write_all(int fd, const void* buf, size_t count) {
+        size_t total_written = 0;
+        const uint8_t* p = static_cast<const uint8_t*>(buf);
+        while (total_written < count) {
+            ssize_t written = write(fd, p + total_written, count - total_written);
+            if (written == -1) {
+                if (errno == EINTR) continue;
+                throw duckpass::vault_io_error("POSIX write failed");
+            }
+            total_written += static_cast<size_t>(written);
+        }
+    }
+
+    void read_all(int fd, void* buf, size_t count) {
+        size_t total_read = 0;
+        uint8_t* p = static_cast<uint8_t*>(buf);
+        while (total_read < count) {
+            ssize_t bytes_read = read(fd, p + total_read, count - total_read);
+            if (bytes_read == -1) {
+                if (errno == EINTR) continue;
+                throw duckpass::vault_io_error("POSIX read failed");
+            }
+            if (bytes_read == 0) {
+                throw duckpass::vault_corrupted_error("Unexpected EOF");
+            }
+            total_read += static_cast<size_t>(bytes_read);
+        }
+    }
 
     // --- Vault Class Implementation ---
 
@@ -145,19 +177,19 @@ namespace vault_handler {
 
         // Read KDF parameters, salt, and IV from the file descriptor
         crypto_handler::KdfParams kdf_params;
-        read(fd, &kdf_params.time_cost, sizeof(uint32_t));
-        read(fd, &kdf_params.memory_cost, sizeof(uint32_t));
-        read(fd, &kdf_params.parallelism, sizeof(uint32_t));
+        read_all(fd, &kdf_params.time_cost, sizeof(uint32_t));
+        read_all(fd, &kdf_params.memory_cost, sizeof(uint32_t));
+        read_all(fd, &kdf_params.parallelism, sizeof(uint32_t));
 
         std::vector<unsigned char> salt(crypto_handler::SALT_BYTES);
-        read(fd, salt.data(), crypto_handler::SALT_BYTES);
+        read_all(fd, salt.data(), crypto_handler::SALT_BYTES);
 
         std::vector<unsigned char> iv(crypto_handler::IV_BYTES);
-        read(fd, iv.data(), crypto_handler::IV_BYTES);
+        read_all(fd, iv.data(), crypto_handler::IV_BYTES);
 
         // Ciphertext size includes the tag at the end (for AES-GCM)
         std::vector<unsigned char> ciphertext(size - (3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES));
-        read(fd, ciphertext.data(), ciphertext.size());
+        read_all(fd, ciphertext.data(), ciphertext.size());
         close(fd);
 
         // Derive key and decrypt data
@@ -191,12 +223,12 @@ namespace vault_handler {
         int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (fd == -1) throw duckpass::vault_io_error(tmp_path.string());
 
-        write(fd, &kdf_params.time_cost, sizeof(uint32_t));
-        write(fd, &kdf_params.memory_cost, sizeof(uint32_t));
-        write(fd, &kdf_params.parallelism, sizeof(uint32_t));
-        write(fd, salt.data(), salt.size());
-        write(fd, iv.data(), iv.size());
-        write(fd, ciphertext.data(), ciphertext.size());
+        write_all(fd, &kdf_params.time_cost, sizeof(uint32_t));
+        write_all(fd, &kdf_params.memory_cost, sizeof(uint32_t));
+        write_all(fd, &kdf_params.parallelism, sizeof(uint32_t));
+        write_all(fd, salt.data(), salt.size());
+        write_all(fd, iv.data(), iv.size());
+        write_all(fd, ciphertext.data(), ciphertext.size());
 
         // Force physical write to disk before closing
         fsync(fd);
