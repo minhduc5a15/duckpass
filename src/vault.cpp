@@ -44,17 +44,17 @@ namespace vault_handler {
 
         // 3. Derive key and decrypt
         crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt);
-        crypto_handler::SecureString plaintext = crypto_handler::decrypt_data(ciphertext, key, iv);
+        crypto_handler::SecureBytes plaintext_bytes = crypto_handler::decrypt_data(ciphertext, key, iv);
 
-        // 4. Parse plaintext to JSON
-        return nlohmann::json::parse(plaintext.begin(), plaintext.end());
+        // 4. Parse binary MessagePack to JSON
+        return nlohmann::json::from_msgpack(plaintext_bytes.begin(), plaintext_bytes.end());
     }
 
     void save_vault(const std::filesystem::path &vault_path, const nlohmann::json &vault_data, const SecureString &master_password) {
-        // Serialize JSON data to string
-        std::string dumped = vault_data.dump();
-        crypto_handler::SecureString plaintext(dumped.begin(), dumped.end());
-        OPENSSL_cleanse(dumped.data(), dumped.length());
+        // Serialize JSON data to MessagePack (binary)
+        std::vector<uint8_t> msgpack = nlohmann::json::to_msgpack(vault_data);
+        crypto_handler::SecureBytes plaintext(msgpack.begin(), msgpack.end());
+        OPENSSL_cleanse(msgpack.data(), msgpack.size());
 
         // Generate a new salt and IV for this save operation
         std::vector<unsigned char> salt = crypto_handler::generate_random_bytes(crypto_handler::SALT_BYTES);

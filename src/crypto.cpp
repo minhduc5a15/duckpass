@@ -39,7 +39,7 @@ namespace crypto_handler {
         return key;
     }
 
-    std::vector<unsigned char> encrypt_data(const SecureString &plaintext, const SecureBytes &key, const std::vector<unsigned char> &iv) {
+    std::vector<unsigned char> encrypt_data(const SecureBytes &plaintext, const SecureBytes &key, const std::vector<unsigned char> &iv) {
         EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
         if (!ctx) throw std::runtime_error("Failed to create cipher context.");
 
@@ -48,9 +48,9 @@ namespace crypto_handler {
             throw std::runtime_error("Failed to initialize GCM encryption.");
         }
 
-        std::vector<unsigned char> ciphertext(plaintext.length());
+        std::vector<unsigned char> ciphertext(plaintext.size());
         int len = 0;
-        if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, reinterpret_cast<const unsigned char *>(plaintext.c_str()), plaintext.length()) != 1) {
+        if (EVP_EncryptUpdate(ctx, ciphertext.data(), &len, plaintext.data(), plaintext.size()) != 1) {
             EVP_CIPHER_CTX_free(ctx);
             throw std::runtime_error("Failed during GCM encryption update.");
         }
@@ -76,7 +76,7 @@ namespace crypto_handler {
         return ciphertext;
     }
 
-    SecureString decrypt_data(const std::vector<unsigned char> &encrypted_blob, const SecureBytes &key, const std::vector<unsigned char> &iv) {
+    SecureBytes decrypt_data(const std::vector<unsigned char> &encrypted_blob, const SecureBytes &key, const std::vector<unsigned char> &iv) {
         if (encrypted_blob.size() < TAG_BYTES) {
             throw duckpass::vault_corrupted_error("Encrypted data is too short.");
         }
@@ -116,11 +116,7 @@ namespace crypto_handler {
 
         EVP_CIPHER_CTX_free(ctx);
 
-        SecureString result;
-        result.reserve(plaintext_len);
-        for(int i = 0; i < plaintext_len; ++i) {
-            result += static_cast<char>(plaintext_bytes[i]);
-        }
-        return result;
+        plaintext_bytes.resize(plaintext_len);
+        return plaintext_bytes;
     }
 } // namespace crypto_handler
