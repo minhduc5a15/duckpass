@@ -6,85 +6,80 @@
 #include <iostream>
 #include <fstream>
 
-CLI::App *export_command::setup(CLI::App &app) {
-    CLI::App *export_cmd = app.add_subcommand("export", "Export the vault to a plain text file (CSV or JSON)");
+void export_command::setup(CLI::App &app) {
+    auto export_cmd = app.add_subcommand("export", "Export the vault to a plain text file (CSV or JSON)");
 
-    export_cmd->add_option("-o,--output", "The path to the output file")->required();
-    export_cmd->add_option("-f,--format", "The output format (csv, json)")->default_val("csv");
-    export_cmd->add_flag("--pretty", "Pretty-print JSON output");
+    auto output_path = std::make_shared<std::filesystem::path>();
+    auto format = std::make_shared<std::string>("csv");
+    auto pretty_print = std::make_shared<bool>(false);
 
-    return export_cmd;
-}
+    export_cmd->add_option("-o,--output", *output_path, "The path to the output file")->required();
+    export_cmd->add_option("-f,--format", *format, "The output format (csv, json)")->default_val("csv");
+    export_cmd->add_flag("--pretty", *pretty_print, "Pretty-print JSON output");
 
-export_command::export_command(CLI::App *app) {
-    app->get_option("--output")->results(output_path_);
-    app->get_option("--format")->results(format_);
-    pretty_print_ = app->get_option("--pretty")->as<bool>();
-}
+    export_cmd->callback([output_path, format, pretty_print]() {
+        config_handler config;
+        auto vault_path = config.get_vault_path();
 
-void export_command::execute() {
-    config_handler config;
-    auto vault_path = config.get_vault_path();
+        if (!vault_handler::vault_exists(vault_path)) {
+            std::cerr << "Error: Vault file not found. Nothing to export." << std::endl;
+            return;
+        }
 
-    if (!vault_handler::vault_exists(vault_path)) {
-        std::cerr << "Error: Vault file not found. Nothing to export." << std::endl;
-        return;
-    }
+        // 1. Get password and decrypt vault
+        duckpass::SecureString master_password = get_password_silent("Enter master password to export: ");
+        nlohmann::json vault_data;
+        try {
+            vault_data = vault_handler::load_vault(vault_path, master_password);
+        } catch (const std::exception &e) {
+            std::cerr << "Error: " << e.what() << std::endl;
+            return;
+        }
 
-    // 1. Get password and decrypt vault
-    duckpass::SecureString master_password = get_password_silent("Enter master password to export: ");
-    nlohmann::json vault_data;
-    try {
-        vault_data = vault_handler::load_vault(vault_path, master_password);
-    } catch (const std::exception &e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return;
-    }
+        if (vault_data.empty()) {
+            std::cout << "Info: Vault is empty. Nothing to export." << std::endl;
+            return;
+        }
 
-    if (vault_data.empty()) {
-        std::cout << "Info: Vault is empty. Nothing to export." << std::endl;
-        return;
-    }
-
-    // 2. Format data
-    std::string output_data;
-    if (format_ == "csv") {
-        output_data = to_csv(vault_data);
-    }
-    else if (format_ == "json") {
-        if (pretty_print_) {
-            output_data = vault_data.dump(4);
+        // 2. Format data
+        std::string output_data;
+        if (*format == "csv") {
+            output_data = to_csv(vault_data);
+        }
+        else if (*format == "json") {
+            if (*pretty_print) {
+                output_data = vault_data.dump(4);
+            }
+            else {
+                output_data = vault_data.dump();
+            }
         }
         else {
-            output_data = vault_data.dump();
+            std::cerr << "Error: Invalid format '" << *format << "'. Please use 'csv' or 'json'." << std::endl;
+            return;
         }
-    }
-    else {
-        std::cerr << "Error: Invalid format '" << format_ << "'. Please use 'csv' or 'json'." << std::endl;
-        return;
-    }
 
-    // 3. Write to file
-    std::ofstream output_file(output_path_);
-    if (!output_file) {
-        std::cerr << "Error: Could not open file for writing: " << output_path_ << std::endl;
-        return;
-    }
-    output_file << output_data;
-    output_file.close();
+        // 3. Write to file
+        std::ofstream output_file(*output_path);
+        if (!output_file) {
+            std::cerr << "Error: Could not open file for writing: " << *output_path << std::endl;
+            return;
+        }
+        output_file << output_data;
+        output_file.close();
 
-    // 4. Print success and security warning
-    std::cout << "Success: Vault has been exported to " << output_path_ << std::endl;
-    std::cout << "\n#################################################################" << std::endl;
-    std::cout << "# WARNING: SECURITY RISK                                      #" << std::endl;
-    std::cout << "# The file '" << output_path_.filename().string() << "' IS NOT ENCRYPTED and contains all your #" << std::endl;
-    std::cout << "# passwords in plain text.                                    #" << std::endl;
-    std::cout << "# Please store it in a secure location and delete it when     #" << std::endl;
-    std::cout << "# it is no longer needed.                                     #" << std::endl;
-    std::cout << "#################################################################" << std::endl;
+        // 4. Print success and security warning
+        std::cout << "Success: Vault has been exported to " << *output_path << std::endl;
+        std::cout << "\n#################################################################" << std::endl;
+        std::cout << "# WARNING: SECURITY RISK                                      #" << std::endl;
+        std::cout << "# The file '" << output_path->filename().string() << "' IS NOT ENCRYPTED and contains all your #" << std::endl;
+        std::cout << "# passwords in plain text.                                    #" << std::endl;
+        std::cout << "# Please store it in a secure location and delete it when     #" << std::endl;
+        std::cout << "# it is no longer needed.                                     #" << std::endl;
+        std::cout << "#################################################################" << std::endl;
+    });
 }
 
-// Helper implementation to escape a single field for CSV
 std::string export_command::escape_csv_field(const std::string &field) {
     std::string result = "\"";
     for (char c: field) {
@@ -99,7 +94,6 @@ std::string export_command::escape_csv_field(const std::string &field) {
     return result;
 }
 
-// Helper implementation to convert JSON to CSV string
 std::string export_command::to_csv(const nlohmann::json &j) {
     std::string csv_string = "name,username,password\n";
 

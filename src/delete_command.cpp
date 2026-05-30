@@ -5,46 +5,43 @@
 #include "CLI/CLI.hpp"
 #include <iostream>
 
-CLI::App* delete_command::setup(CLI::App& app) {
-    CLI::App* del_cmd = app.add_subcommand("delete", "Delete an entry from the vault");
-    del_cmd->add_option("name", "The name of the entry to delete")->required();
-    return del_cmd;
-}
+void delete_command::setup(CLI::App& app) {
+    auto del_cmd = app.add_subcommand("delete", "Delete an entry from the vault");
+    
+    auto name = std::make_shared<std::string>();
+    del_cmd->add_option("name", *name, "The name of the entry to delete")->required();
 
-delete_command::delete_command(CLI::App* app) {
-    app->get_option("name")->results(name_);
-}
+    del_cmd->callback([name]() {
+        config_handler config;
+        auto vault_path = config.get_vault_path();
 
-void delete_command::execute() {
-    config_handler config;
-    auto vault_path = config.get_vault_path();
+        if (!vault_handler::vault_exists(vault_path)) {
+            std::cerr << "Error: Vault file not found." << std::endl;
+            return;
+        }
 
-    if (!vault_handler::vault_exists(vault_path)) {
-        std::cerr << "Error: Vault file not found." << std::endl;
-        return;
-    }
+        duckpass::SecureString master_password = get_password_silent("Enter master password: ");
+        nlohmann::json vault_data;
+        try {
+            vault_data = vault_handler::load_vault(vault_path, master_password);
+        } catch (const std::exception& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
+            return;
+        }
 
-    duckpass::SecureString master_password = get_password_silent("Enter master password: ");
-    nlohmann::json vault_data;
-    try {
-        vault_data = vault_handler::load_vault(vault_path, master_password);
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return;
-    }
+        if (!vault_data.contains(*name)) {
+            std::cerr << "Error: Entry '" << *name << "' not found." << std::endl;
+            return;
+        }
 
-    if (!vault_data.contains(name_)) {
-        std::cerr << "Error: Entry '" << name_ << "' not found." << std::endl;
-        return;
-    }
+        vault_data.erase(*name);
+        std::cout << "Success: Entry '" << *name << "' has been deleted." << std::endl;
 
-    vault_data.erase(name_);
-    std::cout << "Success: Entry '" << name_ << "' has been deleted." << std::endl;
-
-    try {
-        vault_handler::save_vault(vault_path, vault_data, master_password);
-        std::cout << "Vault saved successfully to " << vault_path.string() << std::endl;
-    } catch (const std::exception& e) {
-        std::cerr << "Error saving vault: " << e.what() << std::endl;
-    }
+        try {
+            vault_handler::save_vault(vault_path, vault_data, master_password);
+            std::cout << "Vault saved successfully to " << vault_path.string() << std::endl;
+        } catch (const std::exception& e) {
+            std::cerr << "Error saving vault: " << e.what() << std::endl;
+        }
+    });
 }
