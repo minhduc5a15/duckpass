@@ -1,14 +1,16 @@
 #include "duckpass/delete_command.h"
-#include "duckpass/vault.h"
-#include "duckpass/utils.h"
+
+#include <iostream>
+
+#include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
-#include "CLI/CLI.hpp"
-#include <iostream>
+#include "duckpass/utils.h"
+#include "duckpass/vault.h"
 
 void delete_command::setup(CLI::App& app) {
     auto del_cmd = app.add_subcommand("delete", "Delete an entry from the vault");
-    
+
     auto name = std::make_shared<std::string>();
     del_cmd->add_option("name", *name, "The name of the entry to delete")->required();
 
@@ -25,13 +27,13 @@ void delete_command::setup(CLI::App& app) {
         vault_handler::Vault vault;
         try {
             vault = vault_handler::load_vault(vault_path, master_password);
-        } catch (const duckpass::wrong_password_error &e) {
+        } catch (const duckpass::wrong_password_error& e) {
             std::cerr << "Error: " << e.what() << std::endl;
             return;
-        } catch (const duckpass::vault_corrupted_error &e) {
+        } catch (const duckpass::vault_corrupted_error& e) {
             std::cerr << "Critical Error: " << e.what() << std::endl;
             return;
-        } catch (const duckpass::vault_io_error &e) {
+        } catch (const duckpass::vault_io_error& e) {
             std::cerr << "I/O Error: " << e.what() << std::endl;
             return;
         } catch (const std::exception& e) {

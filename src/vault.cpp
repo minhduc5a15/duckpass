@@ -30,6 +30,9 @@ namespace vault_handler {
 
     /**
      * @brief Writes a string to the buffer: [length (4 bytes, LE)] + [raw data].
+     * 
+     * This helper ensures that strings are stored with their length prefixed,
+     * allowing for safe deserialization of arbitrary binary data or strings.
      */
     void write_string(duckpass::SecureBytes& buffer, const duckpass::SecureString& str) {
         write_uint32(buffer, static_cast<uint32_t>(str.length()));
@@ -131,6 +134,17 @@ namespace vault_handler {
 
     bool vault_exists(const std::filesystem::path& vault_path) { return std::filesystem::exists(vault_path); }
 
+    /**
+     * @brief Loads and decrypts a vault file.
+     * 
+     * Process:
+     * 1. Read binary blob from disk.
+     * 2. Validate magic bytes ("DUCK") and version.
+     * 3. Extract KDF parameters (Argon2id) and Salt.
+     * 4. Derive encryption key from master password using Argon2id.
+     * 5. Decrypt ciphertext using AES-256-GCM.
+     * 6. Deserialize decrypted plaintext into Vault entries.
+     */
     Vault load_vault(const std::filesystem::path& vault_path, const SecureString& master_password) {
         // 1. Read the entire blob using the storage layer
         duckpass::SecureBytes full_blob = duckpass::storage::read_file(vault_path);
@@ -185,6 +199,17 @@ namespace vault_handler {
         return Vault::deserialize(plaintext_bytes);
     }
 
+    /**
+     * @brief Serializes and encrypts a vault to disk.
+     * 
+     * Process:
+     * 1. Serialize all vault entries into a packed binary format.
+     * 2. Generate cryptographically secure random salt and IV.
+     * 3. Derive encryption key from master password using Argon2id.
+     * 4. Encrypt serialized data using AES-256-GCM.
+     * 5. Package [Magic][Version][KDF Params][Salt][IV][Ciphertext+Tag] into a single blob.
+     * 6. Atomically write the blob to disk.
+     */
     void save_vault(const std::filesystem::path& vault_path, const Vault& vault, const SecureString& master_password) {
         // 1. Serialize entries
         duckpass::SecureBytes plaintext = vault.serialize();

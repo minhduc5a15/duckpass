@@ -1,7 +1,8 @@
 #pragma once
 
-#include <string>
 #include <filesystem>
+#include <string>
+
 #include "duckpass/secure_allocator.h"
 
 // Declares our shared utility function.

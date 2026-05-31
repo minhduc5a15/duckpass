@@ -17,20 +17,18 @@ namespace duckpass {
 
     class vault_corrupted_error : public duckpass_error {
     public:
-        explicit vault_corrupted_error(const std::string& detail = "") 
+        explicit vault_corrupted_error(const std::string& detail = "")
             : duckpass_error("Vault data is corrupted or has an invalid structure. " + detail) {}
     };
 
     class vault_io_error : public duckpass_error {
     public:
-        explicit vault_io_error(const std::string& path) 
-            : duckpass_error("Failed to read or write vault file: " + path) {}
+        explicit vault_io_error(const std::string& path) : duckpass_error("Failed to read or write vault file: " + path) {}
     };
 
     class crypto_error : public duckpass_error {
     public:
-        explicit crypto_error(const std::string& message)
-            : duckpass_error("Crypto Operation Failed: " + message) {}
+        explicit crypto_error(const std::string& message) : duckpass_error("Crypto Operation Failed: " + message) {}
     };
 
-} // namespace duckpass
+}  // namespace duckpass

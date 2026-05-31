@@ -1,14 +1,16 @@
 #include "duckpass/add_command.h"
-#include "duckpass/vault.h"
-#include "duckpass/utils.h"
+
+#include <iostream>
+
+#include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
-#include "CLI/CLI.hpp"
-#include <iostream>
+#include "duckpass/utils.h"
+#include "duckpass/vault.h"
 
 void add_command::setup(CLI::App &app) {
     auto add_cmd = app.add_subcommand("add", "Add a new entry to the vault");
-    
+
     auto name = std::make_shared<std::string>();
     auto username = std::make_shared<std::string>();
     auto password_raw = std::make_shared<std::string>();
@@ -36,8 +38,7 @@ void add_command::setup(CLI::App &app) {
                 std::cerr << "Error: Passwords do not match or are empty." << std::endl;
                 return;
             }
-        }
-        else {
+        } else {
             master_password = get_password_silent("Enter master password: ");
             try {
                 vault = vault_handler::load_vault(vault_path, master_password);
@@ -68,7 +69,7 @@ void add_command::setup(CLI::App &app) {
         entry.password = std::move(password);
 
         vault.add_entry(std::move(entry));
-        
+
         std::cout << "Success: Entry '" << *name << "' added." << std::endl;
 
         try {

@@ -36,7 +36,7 @@ namespace vault_handler {
         std::optional<VaultEntry> get_entry(const SecureString& service) const;
         const EntryContainer& get_all_entries() const { return entries; }
 
-        // MODULE TỰ VIẾT THAY THẾ JSON
+        // Serialization methods
         duckpass::SecureBytes serialize() const;
         static Vault deserialize(std::span<const uint8_t> bytes);
 

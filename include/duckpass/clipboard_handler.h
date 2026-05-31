@@ -1,7 +1,7 @@
 #pragma once
 
-#include <string>
 #include <chrono>
+#include <string>
 
 namespace clipboard_handler {
     // Sets the content of the system clipboard.
@@ -10,4 +10,4 @@ namespace clipboard_handler {
 
     // Creates a detached thread to clear the clipboard after a specified delay.
     void clear_after_delay(std::chrono::seconds delay);
-} // namespace clipboard_handler
+}  // namespace clipboard_handler

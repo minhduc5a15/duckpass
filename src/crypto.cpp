@@ -2,7 +2,6 @@
 
 #include <memory>
 #include <span>
-#include <stdexcept>
 #include <vector>
 
 #include "duckpass/exceptions.h"

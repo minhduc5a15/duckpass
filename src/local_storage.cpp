@@ -112,7 +112,7 @@ namespace duckpass::storage {
             throw vault_io_error("Failed to atomically rename vault file: " + ec.message());
         }
 
-        // IMPORTANT: On many file systems, the parent directory metadata must be synced 
+        // IMPORTANT: On many file systems, the parent directory metadata must be synced
         // to ensure the rename entry itself is persisted to disk and survives a crash.
         std::filesystem::path parent_dir = path.parent_path();
         if (parent_dir.empty()) parent_dir = ".";

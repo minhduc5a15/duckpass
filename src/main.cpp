@@ -11,6 +11,7 @@
 #include "duckpass/delete_command.h"
 #include "duckpass/generate_command.h"
 #include "duckpass/export_command.h"
+#include "duckpass/shell_command.h"
 
 int main(int argc, char** argv) {
     CLI::App app{"duckpass: A modular command-line password manager"};
@@ -23,6 +24,7 @@ int main(int argc, char** argv) {
     delete_command::setup(app);
     generate_command::setup(app);
     export_command::setup(app);
+    duckpass::shell::setup(app);
 
     // --- Parsing and Execution ---
     try {

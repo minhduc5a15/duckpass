@@ -19,7 +19,7 @@ duckpass::SecureString get_password_silent(const std::string& prompt) {
 
     tcsetattr(STDIN_FILENO, TCSANOW, &old_term);  // Restore terminal settings
     std::cout << std::endl;
-    
+
     duckpass::SecureString secure_password(password.begin(), password.end());
     // Wipe the temporary std::string
     OPENSSL_cleanse(password.data(), password.length());
@@ -37,7 +37,7 @@ std::filesystem::path get_config_directory() {
     config_path = std::filesystem::path(appdata) / "duckpass";
 #else
     // On Linux/macOS, use ~/.duckpass
-    const char *home = std::getenv("HOME");
+    const char* home = std::getenv("HOME");
     if (home == nullptr) {
         throw std::runtime_error("Error: HOME environment variable not set.");
     }

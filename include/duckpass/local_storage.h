@@ -1,9 +1,9 @@
 #pragma once
 
 #include <filesystem>
-#include <vector>
-#include <cstdint>
 #include <span>
+#include <vector>
+
 #include "duckpass/secure_allocator.h"
 
 namespace duckpass::storage {
@@ -20,4 +20,4 @@ namespace duckpass::storage {
      */
     void write_file_atomic(const std::filesystem::path& path, std::span<const uint8_t> data);
 
-} // namespace duckpass::storage
+}  // namespace duckpass::storage

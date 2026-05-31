@@ -4,3 +4,4 @@ rebuild.sh
 .idea
 out
 .qodo
+.cache

@@ -1,14 +1,16 @@
 #include "duckpass/clipboard_handler.h"
-#include <string>
+
 #include <cstdlib>
-#include <sstream>
 #include <iostream>
+#include <sstream>
+#include <string>
 
 // --- ADD NEW INCLUDES FOR LINUX/MACOS ---
 #if defined(__linux__) || defined(__APPLE__)
 #include <unistd.h>
-#include <thread>
+
 #include <chrono>
+#include <thread>
 #endif
 
 // Helper function to escape single quotes for shell commands
@@ -17,7 +19,7 @@ std::string escape_for_shell(const std::string& text) {
     escaped_text.reserve(text.length());
     for (char c : text) {
         if (c == '\'') {
-            escaped_text += "'\\''"; // The shell trick to embed a single quote
+            escaped_text += "'\\''";  // The shell trick to embed a single quote
         } else {
             escaped_text += c;
         }
@@ -86,9 +88,9 @@ namespace clipboard_handler {
 #else
         // Other operating systems do not yet support this technique
         // (Windows has a different, more complex way)
-        (void)delay; // Tránh warning unused variable
+        (void)delay;  // Tránh warning unused variable
         return;
 #endif
     }
 
-} // namespace clipboard_handler
+}  // namespace clipboard_handler

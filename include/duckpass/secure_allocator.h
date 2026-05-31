@@ -1,10 +1,10 @@
 #pragma once
 
-#include <memory>
-#include <vector>
-#include <string>
-#include <map>
 #include <openssl/crypto.h>
+
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace duckpass {
 
@@ -15,15 +15,15 @@ namespace duckpass {
         secure_allocator() noexcept = default;
 
         template <typename U>
-        secure_allocator(const secure_allocator<U>&) noexcept {}
+        explicit secure_allocator(const secure_allocator<U>&) noexcept {}
 
-        T* allocate(std::size_t n) {
-            if (n > std::size_t(-1) / sizeof(T)) throw std::bad_alloc();
+        T* allocate(const std::size_t &n) {
+            if (n > static_cast<std::size_t>(-1) / sizeof(T)) throw std::bad_alloc();
             if (auto p = static_cast<T*>(std::malloc(n * sizeof(T)))) return p;
             throw std::bad_alloc();
         }
 
-        void deallocate(T* p, std::size_t n) noexcept {
+        static void deallocate(T* p, const std::size_t &n) noexcept {
             if (p) {
                 OPENSSL_cleanse(p, n * sizeof(T));
                 std::free(p);

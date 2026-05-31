@@ -1,11 +1,13 @@
 #include "duckpass/export_command.h"
+
+#include <fstream>
+#include <iostream>
+
+#include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
+#include "duckpass/exceptions.h"
 #include "duckpass/utils.h"
 #include "duckpass/vault.h"
-#include "duckpass/exceptions.h"
-#include "CLI/CLI.hpp"
-#include <iostream>
-#include <fstream>
 
 void export_command::setup(CLI::App &app) {
     auto export_cmd = app.add_subcommand("export", "Export the vault to a plain text file (CSV or JSON)");
@@ -55,16 +57,15 @@ void export_command::setup(CLI::App &app) {
         std::string output_data;
         if (*format == "csv") {
             output_data = to_csv(vault);
-        }
-        else if (*format == "json") {
+        } else if (*format == "json") {
             std::string json = "[\n";
-            const auto& entries = vault.get_all_entries();
+            const auto &entries = vault.get_all_entries();
             for (size_t i = 0; i < entries.size(); ++i) {
-                const auto& entry = entries[i];
+                const auto &entry = entries[i];
                 std::string s(entry.service.begin(), entry.service.end());
                 std::string u(entry.username.begin(), entry.username.end());
                 std::string p(entry.password.begin(), entry.password.end());
-                
+
                 json += "  {\n";
                 json += "    \"service\": \"" + s + "\",\n";
                 json += "    \"username\": \"" + u + "\",\n";
@@ -75,8 +76,7 @@ void export_command::setup(CLI::App &app) {
             }
             json += "]";
             output_data = json;
-        }
-        else {
+        } else {
             std::cerr << "Error: Invalid format '" << *format << "'. Please use 'csv' or 'json'." << std::endl;
             return;
         }
@@ -104,11 +104,10 @@ void export_command::setup(CLI::App &app) {
 
 std::string export_command::escape_csv_field(const std::string &field) {
     std::string result = "\"";
-    for (char c: field) {
+    for (char c : field) {
         if (c == '\"') {
             result += "\"\"";
-        }
-        else {
+        } else {
             result += c;
         }
     }

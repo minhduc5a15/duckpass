@@ -1,16 +1,18 @@
 #include "duckpass/get_command.h"
-#include "duckpass/vault.h"
-#include "duckpass/utils.h"
-#include "duckpass/config_handler.h"
-#include "duckpass/clipboard_handler.h"
-#include "duckpass/exceptions.h"
-#include "CLI/CLI.hpp"
-#include <iostream>
+
 #include <chrono>
+#include <iostream>
+
+#include "CLI/CLI.hpp"
+#include "duckpass/clipboard_handler.h"
+#include "duckpass/config_handler.h"
+#include "duckpass/exceptions.h"
+#include "duckpass/utils.h"
+#include "duckpass/vault.h"
 
 void get_command::setup(CLI::App &app) {
     auto get_cmd = app.add_subcommand("get", "Get an entry from the vault");
-    
+
     auto name = std::make_shared<std::string>();
     auto copy_to_clipboard = std::make_shared<bool>(false);
 
@@ -53,8 +55,8 @@ void get_command::setup(CLI::App &app) {
         }
 
         const auto &entry = *entry_opt;
-        const duckpass::SecureString& username = entry.username;
-        const duckpass::SecureString& password = entry.password;
+        const duckpass::SecureString &username = entry.username;
+        const duckpass::SecureString &password = entry.password;
 
         if (*copy_to_clipboard) {
             std::string temp_pass = std::string(password.begin(), password.end());
@@ -65,13 +67,11 @@ void get_command::setup(CLI::App &app) {
                 const int delay_seconds = 30;
                 std::cout << "It will be cleared automatically in " << delay_seconds << " seconds." << std::endl;
                 clipboard_handler::clear_after_delay(std::chrono::seconds(delay_seconds));
-            }
-            else {
+            } else {
                 OPENSSL_cleanse(temp_pass.data(), temp_pass.length());
                 std::cerr << "Error: Could not copy to clipboard." << std::endl;
             }
-        }
-        else {
+        } else {
             std::string temp_pass = std::string(password.begin(), password.end());
             std::string temp_user = std::string(username.begin(), username.end());
             std::string temp_service = std::string(entry.service.begin(), entry.service.end());

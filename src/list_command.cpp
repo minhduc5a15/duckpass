@@ -1,14 +1,16 @@
 #include "duckpass/list_command.h"
-#include "duckpass/vault.h"
-#include "duckpass/utils.h"
+
+#include <iostream>
+
+#include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
-#include "CLI/CLI.hpp"
-#include <iostream>
+#include "duckpass/utils.h"
+#include "duckpass/vault.h"
 
 void list_command::setup(CLI::App& app) {
     auto list_cmd = app.add_subcommand("list", "List all entries in the vault");
-    
+
     list_cmd->callback([]() {
         config_handler config;
         auto vault_path = config.get_vault_path();
@@ -23,13 +25,13 @@ void list_command::setup(CLI::App& app) {
 
         try {
             vault = vault_handler::load_vault(vault_path, master_password);
-        } catch (const duckpass::wrong_password_error &e) {
+        } catch (const duckpass::wrong_password_error& e) {
             std::cerr << "Error: " << e.what() << std::endl;
             return;
-        } catch (const duckpass::vault_corrupted_error &e) {
+        } catch (const duckpass::vault_corrupted_error& e) {
             std::cerr << "Critical Error: " << e.what() << std::endl;
             return;
-        } catch (const duckpass::vault_io_error &e) {
+        } catch (const duckpass::vault_io_error& e) {
             std::cerr << "I/O Error: " << e.what() << std::endl;
             return;
         } catch (const std::exception& e) {

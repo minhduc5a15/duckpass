@@ -25,6 +25,8 @@ set(SOURCES
         src/list_command.cpp
         src/local_storage.cpp
         src/main.cpp
+        src/shell_command.cpp
+        src/terminal_utils.cpp
         src/utils.cpp
         src/vault.cpp
 )
