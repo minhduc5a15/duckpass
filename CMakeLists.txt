@@ -16,6 +16,7 @@ pkg_check_modules(ARGON2 REQUIRED libargon2)
 set(SOURCES
         src/add_command.cpp
         src/clipboard_handler.cpp
+        src/completion_command.cpp
         src/config_handler.cpp
         src/crypto.cpp
         src/delete_command.cpp

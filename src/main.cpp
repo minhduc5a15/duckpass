@@ -12,9 +12,10 @@
 #include "duckpass/generate_command.h"
 #include "duckpass/export_command.h"
 #include "duckpass/shell_command.h"
+#include "duckpass/completion_command.h"
 
 int main(int argc, char** argv) {
-    CLI::App app{"duckpass: A modular command-line password manager"};
+    CLI::App app{"duckpass: A modular command-line password manager", "duckpass"};
     app.require_subcommand(1);
 
     // --- Setup All Commands using CLI11 Callbacks ---
@@ -25,6 +26,7 @@ int main(int argc, char** argv) {
     generate_command::setup(app);
     export_command::setup(app);
     duckpass::shell::setup(app);
+    completion_command::setup(app);
 
     // --- Parsing and Execution ---
     try {
