@@ -1,5 +1,6 @@
 #include "duckpass/shell_command.h"
 
+#include <algorithm>
 #include <iostream>
 #include <string_view>
 #include <vector>
@@ -151,8 +152,71 @@ namespace duckpass::shell {
                     std::cout << "Service not found." << std::endl;
                 }
             } else if (input_view == "add") {
-                // Placeholder for complex input handling
-                std::cout << "Adding new entry. Please use the 'add' command from the main CLI for now." << std::endl;
+                duckpass::SecureString s_service, s_username, s_password;
+
+                auto trim_secure = [](duckpass::SecureString& s) {
+                    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
+                    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
+                };
+
+                // 1. Validation loop for Service Name
+                while (true) {
+                    s_service = duckpass::terminal::read_line_interactive("Service: ", {}, {});
+                    trim_secure(s_service);
+
+                    if (s_service.empty()) {
+                        std::cerr << "\033[31mError: Service name cannot be empty or just spaces.\033[0m" << std::endl;
+                        continue;
+                    }
+
+                    if (vault.get_entry(s_service)) {
+                        std::cerr << "\033[31mError: Service '" << std::string(s_service.begin(), s_service.end()) 
+                                  << "' already exists. Please delete it first if you want to update.\033[0m" << std::endl;
+                        return; // Return to main shell prompt if user wants to cancel or fix
+                    }
+                    break;
+                }
+
+                // 2. Validation loop for Username
+                while (true) {
+                    s_username = duckpass::terminal::read_line_interactive("Username: ", {}, {});
+                    trim_secure(s_username);
+
+                    if (s_username.empty()) {
+                        std::cerr << "\033[31mError: Username cannot be empty or just spaces. Please try again.\033[0m" << std::endl;
+                        continue;
+                    }
+                    break;
+                }
+
+                // 3. Validation loop for Password
+                while (true) {
+                    s_password = get_password_silent("Password: ");
+                    // We don't trim password as spaces might be intentional parts of a passphrase
+                    if (s_password.empty()) {
+                        std::cerr << "\033[31mError: Password cannot be empty. Please try again.\033[0m" << std::endl;
+                        continue;
+                    }
+                    break;
+                }
+
+                try {
+                    vault_handler::VaultEntry entry;
+                    std::string display_name(s_service.begin(), s_service.end());
+                    entry.service = std::move(s_service);
+                    entry.username = std::move(s_username);
+                    entry.password = std::move(s_password);
+
+                    vault.add_entry(std::move(entry));
+                    
+                    vault_handler::save_vault(vault_path, vault, master_password);
+                    
+                    std::cout << "\033[32mSuccessfully added entry for " << display_name << "!\033[0m" << std::endl;
+                    
+                    refresh_services();
+                } catch (const std::exception& e) {
+                    std::cerr << "\033[31mError adding entry: " << e.what() << "\033[0m" << std::endl;
+                }
             } else {
                 std::cout << "Unknown command: " << input_view << ". Type 'help' for a list of commands." << std::endl;
             }
