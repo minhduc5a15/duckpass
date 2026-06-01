@@ -11,7 +11,9 @@
 #include "duckpass/export_command.h"
 #include "duckpass/generate_command.h"
 #include "duckpass/get_command.h"
+#include "duckpass/init_command.h"
 #include "duckpass/list_command.h"
+#include "duckpass/rekey_command.h"
 #include "duckpass/shell_command.h"
 
 int main(int argc, char** argv) {
@@ -19,6 +21,8 @@ int main(int argc, char** argv) {
     app.require_subcommand(1);
 
     // --- Setup All Commands using CLI11 Callbacks ---
+    init_command::setup(app);
+    rekey_command::setup(app);
     add_command::setup(app);
     list_command::setup(app);
     get_command::setup(app);

@@ -248,6 +248,24 @@ namespace vault_handler {
         // Ciphertext (includes authentication tag)
         full_package.insert(full_package.end(), ciphertext.begin(), ciphertext.end());
 
+        // =================================================================
+        // AUTOMATIC BACKUP: Create a (.bak) copy before overwriting
+        // =================================================================
+        if (std::filesystem::exists(vault_path)) {
+            std::filesystem::path backup_path = vault_path;
+            backup_path.replace_extension(vault_path.extension().string() + ".bak");
+            std::error_code ec;
+
+            // Use std::filesystem::copy_file for safe copying
+            std::filesystem::copy_file(vault_path, backup_path, std::filesystem::copy_options::overwrite_existing, ec);
+
+            // If backup fails (e.g., permission error), warn but don't block main write (Fail-safe)
+            if (ec) {
+                std::cerr << "[Warning] Could not create backup (.bak): " << ec.message() << "\n";
+            }
+        }
+        // =================================================================
+
         // 4. Delegate disk I/O to storage layer
         duckpass::storage::write_file_atomic(vault_path, full_package);
     }

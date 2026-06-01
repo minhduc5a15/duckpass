@@ -24,7 +24,8 @@ void get_command::setup(CLI::App &app) {
         auto vault_path = config.get_vault_path();
 
         if (!vault_handler::vault_exists(vault_path)) {
-            std::cerr << "Error: Vault file not found. Nothing to get." << std::endl;
+            std::cerr << "Error: Vault has not been initialized.\n"
+                      << "Please run 'duckpass init' to create a new storage.\n";
             return;
         }
 

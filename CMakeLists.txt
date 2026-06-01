@@ -23,9 +23,11 @@ set(SOURCES
         src/export_command.cpp
         src/generate_command.cpp
         src/get_command.cpp
+        src/init_command.cpp
         src/list_command.cpp
         src/local_storage.cpp
         src/main.cpp
+        src/rekey_command.cpp
         src/shell_command.cpp
         src/terminal_utils.cpp
         src/utils.cpp

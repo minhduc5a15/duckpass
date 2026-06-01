@@ -20,41 +20,35 @@ void add_command::setup(CLI::App &app) {
     add_cmd->add_option("password", *password_raw, "Password for the entry")->required();
 
     add_cmd->callback([name, username, password_raw]() {
-        duckpass::SecureString password(password_raw->begin(), password_raw->end());
-        OPENSSL_cleanse(password_raw->data(), password_raw->length());
-
         config_handler config;
         auto vault_path = config.get_vault_path();
 
-        vault_handler::Vault vault;
-        duckpass::SecureString master_password;
-        bool is_new_vault = !vault_handler::vault_exists(vault_path);
+        if (!vault_handler::vault_exists(vault_path)) {
+            std::cerr << "Error: Vault has not been initialized.\n"
+                      << "Please run 'duckpass init' to create a new storage.\n";
+            return;
+        }
 
-        if (is_new_vault) {
-            std::cout << "Info: No vault found. Creating a new one..." << std::endl;
-            master_password = utils::get_password_silent("Enter a new master password: ");
-            duckpass::SecureString confirm_password = utils::get_password_silent("Confirm master password: ");
-            if (master_password.empty() || master_password != confirm_password) {
-                std::cerr << "Error: Passwords do not match or are empty." << std::endl;
-                return;
-            }
-        } else {
-            master_password = utils::get_password_silent("Enter master password: ");
-            try {
-                vault = vault_handler::load_vault(vault_path, master_password);
-            } catch (const duckpass::wrong_password_error &e) {
-                std::cerr << "Error: " << e.what() << std::endl;
-                return;
-            } catch (const duckpass::vault_corrupted_error &e) {
-                std::cerr << "Critical Error: " << e.what() << std::endl;
-                return;
-            } catch (const duckpass::vault_io_error &e) {
-                std::cerr << "I/O Error: " << e.what() << std::endl;
-                return;
-            } catch (const std::exception &e) {
-                std::cerr << "An unexpected error occurred: " << e.what() << std::endl;
-                return;
-            }
+        duckpass::SecureString password(password_raw->begin(), password_raw->end());
+        OPENSSL_cleanse(password_raw->data(), password_raw->length());
+
+        vault_handler::Vault vault;
+        duckpass::SecureString master_password = utils::get_password_silent("Enter master password: ");
+
+        try {
+            vault = vault_handler::load_vault(vault_path, master_password);
+        } catch (const duckpass::wrong_password_error& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
+            return;
+        } catch (const duckpass::vault_corrupted_error& e) {
+            std::cerr << "Critical Error: " << e.what() << std::endl;
+            return;
+        } catch (const duckpass::vault_io_error& e) {
+            std::cerr << "I/O Error: " << e.what() << std::endl;
+            return;
+        } catch (const std::exception& e) {
+            std::cerr << "An unexpected error occurred: " << e.what() << std::endl;
+            return;
         }
 
         duckpass::SecureString service_name(name->begin(), name->end());
