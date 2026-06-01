@@ -11,23 +11,30 @@
 namespace utils {
 
     duckpass::SecureString get_password_silent(const std::string& prompt) {
-        std::cout << prompt;
+        std::cout << prompt << std::flush;
         termios old_term{};
         tcgetattr(STDIN_FILENO, &old_term);
         termios new_term = old_term;
         new_term.c_lflag &= ~ECHO;  // Turn off terminal echo
         tcsetattr(STDIN_FILENO, TCSANOW, &new_term);
 
-        std::string password;
-        std::getline(std::cin, password);
+        duckpass::SecureString password;
+        char c;
+        // Read byte-by-byte from stdin
+        while (read(STDIN_FILENO, &c, 1) == 1 && c != '\n' && c != '\r') {
+            if (c == '\b' || c == 127) {  // Handle Backspace (ASCII 127 is DEL/Backspace on Unix)
+                if (!password.empty()) {
+                    password.pop_back();
+                }
+            } else {
+                password.push_back(c);  // Uses secure_allocator
+            }
+        }
 
         tcsetattr(STDIN_FILENO, TCSANOW, &old_term);  // Restore terminal settings
         std::cout << std::endl;
 
-        duckpass::SecureString secure_password(password.begin(), password.end());
-        // Wipe the temporary std::string
-        OPENSSL_cleanse(password.data(), password.length());
-        return secure_password;
+        return password;
     }
 
     std::filesystem::path get_config_directory() {

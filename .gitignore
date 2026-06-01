@@ -7,3 +7,5 @@ out
 .cache
 *.md
 .gemini
+.codegraph
+task

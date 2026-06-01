@@ -34,9 +34,9 @@ namespace clipboard_handler {
 #if defined(_WIN32)
         command_stream << "echo | set /p=\"" << text << "\" | clip";
 #elif defined(__APPLE__)
-        command_stream << "echo '" << escape_for_shell(text) << "' | pbcopy";
+        command_stream << "printf '%s' '" << escape_for_shell(text) << "' | pbcopy";
 #elif defined(__linux__)
-        command_stream << "echo '" << escape_for_shell(text) << "' | xclip -selection clipboard";
+        command_stream << "printf '%s' '" << escape_for_shell(text) << "' | xclip -selection clipboard";
 #else
         return false;
 #endif

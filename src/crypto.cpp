@@ -1,5 +1,6 @@
 #include "duckpass/crypto.h"
 
+#include <limits>
 #include <memory>
 #include <span>
 #include <vector>
@@ -43,6 +44,11 @@ namespace crypto_handler {
     }
 
     std::vector<unsigned char> encrypt_data(std::span<const uint8_t> plaintext, std::span<const uint8_t> key, std::span<const uint8_t> iv) {
+        // Integer overflow protection for OpenSSL API (uses int for size)
+        if (plaintext.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+            throw duckpass::crypto_error("Vault data size exceeds OpenSSL's encryption limit (2.1GB).");
+        }
+
         CipherContextPtr ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
         if (!ctx) {
             ERR_clear_error();
@@ -56,7 +62,7 @@ namespace crypto_handler {
 
         std::vector<unsigned char> ciphertext(plaintext.size());
         int len = 0;
-        if (EVP_EncryptUpdate(ctx.get(), ciphertext.data(), &len, plaintext.data(), plaintext.size()) != 1) {
+        if (EVP_EncryptUpdate(ctx.get(), ciphertext.data(), &len, plaintext.data(), static_cast<int>(plaintext.size())) != 1) {
             ERR_clear_error();
             throw duckpass::crypto_error("Failed during GCM encryption update.");
         }
