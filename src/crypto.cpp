@@ -43,7 +43,8 @@ namespace crypto_handler {
         return key;
     }
 
-    std::vector<unsigned char> encrypt_data(std::span<const uint8_t> plaintext, std::span<const uint8_t> key, std::span<const uint8_t> iv) {
+    std::vector<unsigned char> encrypt_data(std::span<const uint8_t> plaintext, std::span<const uint8_t> key, std::span<const uint8_t> iv,
+                                            std::span<const uint8_t> aad) {
         // Integer overflow protection for OpenSSL API (uses int for size)
         if (plaintext.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
             throw duckpass::crypto_error("Vault data size exceeds OpenSSL's encryption limit (2.1GB).");
@@ -58,6 +59,15 @@ namespace crypto_handler {
         if (EVP_EncryptInit_ex(ctx.get(), EVP_aes_256_gcm(), nullptr, key.data(), iv.data()) != 1) {
             ERR_clear_error();
             throw duckpass::crypto_error("Failed to initialize GCM encryption.");
+        }
+
+        // Provide AAD for GCM. AAD is authenticated but not encrypted.
+        if (!aad.empty()) {
+            int out_len;
+            if (EVP_EncryptUpdate(ctx.get(), nullptr, &out_len, aad.data(), static_cast<int>(aad.size())) != 1) {
+                ERR_clear_error();
+                throw duckpass::crypto_error("Failed to set AAD for GCM encryption.");
+            }
         }
 
         std::vector<unsigned char> ciphertext(plaintext.size());
@@ -86,7 +96,8 @@ namespace crypto_handler {
         return ciphertext;
     }
 
-    SecureBytes decrypt_data(std::span<const uint8_t> encrypted_blob, std::span<const uint8_t> key, std::span<const uint8_t> iv) {
+    SecureBytes decrypt_data(std::span<const uint8_t> encrypted_blob, std::span<const uint8_t> key, std::span<const uint8_t> iv,
+                             std::span<const uint8_t> aad) {
         if (encrypted_blob.size() < TAG_BYTES) {
             throw duckpass::vault_corrupted_error("Encrypted data is too short.");
         }
@@ -110,6 +121,15 @@ namespace crypto_handler {
         if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_BYTES, const_cast<uint8_t *>(tag.data())) != 1) {
             ERR_clear_error();
             throw duckpass::crypto_error("Failed to set GCM authentication tag.");
+        }
+
+        // Provide AAD for GCM. AAD must match the one used during encryption.
+        if (!aad.empty()) {
+            int out_len;
+            if (EVP_DecryptUpdate(ctx.get(), nullptr, &out_len, aad.data(), static_cast<int>(aad.size())) != 1) {
+                ERR_clear_error();
+                throw duckpass::crypto_error("Failed to set AAD for GCM decryption.");
+            }
         }
 
         SecureBytes plaintext_bytes(ciphertext.size());

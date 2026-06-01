@@ -1,10 +1,10 @@
 #include "duckpass/generate_command.h"
 
 #include <iostream>
-#include <random>
 #include <string>
 
 #include "CLI/CLI.hpp"
+#include "duckpass/crypto.h"
 #include "duckpass/secure_allocator.h"
 
 void generate_command::setup(CLI::App &app) {
@@ -25,15 +25,13 @@ void generate_command::setup(CLI::App &app) {
             return;
         }
 
-        std::random_device rd;
-        std::mt19937 generator(rd());
-        std::uniform_int_distribution<int> distribution(0, static_cast<int>(chars.length()) - 1);
+        std::vector<unsigned char> random_bytes = crypto_handler::generate_random_bytes(*length);
 
         duckpass::SecureString password;
         password.reserve(*length);
 
         for (int i = 0; i < *length; ++i) {
-            password += chars[distribution(generator)];
+            password += chars[random_bytes[i] % chars.length()];
         }
 
         std::cout << "Generated Password: ";

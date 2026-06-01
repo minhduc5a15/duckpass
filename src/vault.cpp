@@ -165,8 +165,15 @@ namespace vault_handler {
         offset += 4;
 
         uint32_t version = read_uint32(bytes, offset);
-        if (version != 1) {
+        if (version != 1 && version != 2) {
             throw duckpass::vault_corrupted_error("Unsupported vault version: " + std::to_string(version));
+        }
+
+        // For version 2, the entire header is protected by GCM AAD.
+        const size_t header_size = 8 + 3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES;
+        std::span<const uint8_t> aad;
+        if (version == 2) {
+            aad = bytes.subspan(0, header_size);
         }
 
         // 3. Parse KDF parameters, Salt, and IV
@@ -194,7 +201,7 @@ namespace vault_handler {
 
         // 5. Decrypt and Deserialize
         crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
-        crypto_handler::SecureBytes plaintext_bytes = crypto_handler::decrypt_data(ciphertext, key, iv);
+        crypto_handler::SecureBytes plaintext_bytes = crypto_handler::decrypt_data(ciphertext, key, iv, aad);
 
         return Vault::deserialize(plaintext_bytes);
     }
@@ -220,32 +227,35 @@ namespace vault_handler {
         std::vector<uint8_t> salt = crypto_handler::generate_random_bytes(crypto_handler::SALT_BYTES);
         std::vector<uint8_t> iv = crypto_handler::generate_random_bytes(crypto_handler::IV_BYTES);
 
-        crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
-        std::vector<uint8_t> ciphertext = crypto_handler::encrypt_data(plaintext, key, iv);
-
-        // 3. Package the full blob [MAGIC][VERSION][KDF_PARAMS][SALT][IV][CIPHERTEXT+TAG]
-        duckpass::SecureBytes full_package;
-        full_package.reserve(8 + 3 * sizeof(uint32_t) + salt.size() + iv.size() + ciphertext.size());
+        // 3. Package the Header [MAGIC][VERSION][KDF_PARAMS][SALT][IV]
+        // This header will be used as AAD (Additional Authenticated Data) for GCM.
+        duckpass::SecureBytes header;
+        const size_t header_size = 4 + sizeof(uint32_t) + 3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES;
+        header.reserve(header_size);
 
         // Magic Bytes "DUCK"
-        full_package.push_back('D');
-        full_package.push_back('U');
-        full_package.push_back('C');
-        full_package.push_back('K');
+        header.push_back('D');
+        header.push_back('U');
+        header.push_back('C');
+        header.push_back('K');
 
-        // Version 1
-        write_uint32(full_package, 1);
+        // Version 2 (uses AAD for the header)
+        write_uint32(header, 2);
 
         // KDF Params
-        write_uint32(full_package, kdf_params.time_cost);
-        write_uint32(full_package, kdf_params.memory_cost);
-        write_uint32(full_package, kdf_params.parallelism);
+        write_uint32(header, kdf_params.time_cost);
+        write_uint32(header, kdf_params.memory_cost);
+        write_uint32(header, kdf_params.parallelism);
 
         // Salt and IV
-        full_package.insert(full_package.end(), salt.begin(), salt.end());
-        full_package.insert(full_package.end(), iv.begin(), iv.end());
+        header.insert(header.end(), salt.begin(), salt.end());
+        header.insert(header.end(), iv.begin(), iv.end());
 
-        // Ciphertext (includes authentication tag)
+        crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
+        std::vector<uint8_t> ciphertext = crypto_handler::encrypt_data(plaintext, key, iv, header);
+
+        // 4. Final Blob: [HEADER][CIPHERTEXT+TAG]
+        duckpass::SecureBytes full_package = std::move(header);
         full_package.insert(full_package.end(), ciphertext.begin(), ciphertext.end());
 
         // =================================================================

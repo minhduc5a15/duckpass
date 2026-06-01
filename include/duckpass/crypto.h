@@ -39,10 +39,12 @@ namespace crypto_handler {
 
     // Encrypts plaintext using AES-256-GCM.
     // Returns a single vector containing [ciphertext + authentication_tag].
-    std::vector<unsigned char> encrypt_data(std::span<const uint8_t> plaintext, std::span<const uint8_t> key, std::span<const uint8_t> iv);
+    std::vector<unsigned char> encrypt_data(std::span<const uint8_t> plaintext, std::span<const uint8_t> key, std::span<const uint8_t> iv,
+                                            std::span<const uint8_t> aad = {});
 
     // Decrypts data using AES-256-GCM.
     // Expects a single vector containing [ciphertext + authentication_tag].
     // Throws an exception if authentication fails.
-    SecureBytes decrypt_data(std::span<const uint8_t> encrypted_blob, std::span<const uint8_t> key, std::span<const uint8_t> iv);
+    SecureBytes decrypt_data(std::span<const uint8_t> encrypted_blob, std::span<const uint8_t> key, std::span<const uint8_t> iv,
+                             std::span<const uint8_t> aad = {});
 }  // namespace crypto_handler
