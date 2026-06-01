@@ -1,10 +1,12 @@
 #include "duckpass/add_command.h"
 
 #include <iostream>
+#include <unistd.h>
 
 #include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
+#include "duckpass/terminal_utils.h"
 #include "duckpass/utils.h"
 #include "duckpass/vault.h"
 
@@ -13,13 +15,11 @@ void add_command::setup(CLI::App &app) {
 
     auto name = std::make_shared<std::string>();
     auto username = std::make_shared<std::string>();
-    auto password_raw = std::make_shared<std::string>();
 
     add_cmd->add_option("name", *name, "The name of the entry (e.g., gmail, facebook)")->required();
     add_cmd->add_option("username", *username, "Username or email")->required();
-    add_cmd->add_option("password", *password_raw, "Password for the entry")->required();
 
-    add_cmd->callback([name, username, password_raw]() {
+    add_cmd->callback([name, username]() {
         config_handler config;
         auto vault_path = config.get_vault_path();
 
@@ -29,12 +29,9 @@ void add_command::setup(CLI::App &app) {
             return;
         }
 
-        duckpass::SecureString password(password_raw->begin(), password_raw->end());
-        OPENSSL_cleanse(password_raw->data(), password_raw->length());
-
-        vault_handler::Vault vault;
         duckpass::SecureString master_password = utils::get_password_silent("Enter master password: ");
 
+        vault_handler::Vault vault;
         try {
             vault = vault_handler::load_vault(vault_path, master_password);
         } catch (const duckpass::wrong_password_error& e) {
@@ -54,6 +51,33 @@ void add_command::setup(CLI::App &app) {
         duckpass::SecureString service_name(name->begin(), name->end());
         if (vault.get_entry(service_name)) {
             std::cout << "Error: Entry '" << *name << "' already exists." << std::endl;
+            return;
+        }
+
+        duckpass::SecureString password;
+        if (isatty(STDIN_FILENO)) {
+            duckpass::SecureString p1 = terminal_utils::read_password("Enter password for '" + *name + "': ");
+            duckpass::SecureString p2 = terminal_utils::read_password("Retype password for '" + *name + "': ");
+
+            if (p1 != p2) {
+                std::cerr << "Error: Passwords do not match. Entry not added." << std::endl;
+                return;
+            }
+            password = std::move(p1);
+        } else {
+            // Read from STDIN if not a TTY (for piping)
+            std::string line;
+            if (std::getline(std::cin, line)) {
+                password = duckpass::SecureString(line.begin(), line.end());
+                OPENSSL_cleanse(line.data(), line.length());
+            } else {
+                std::cerr << "Error: Failed to read password from STDIN." << std::endl;
+                return;
+            }
+        }
+
+        if (password.empty()) {
+            std::cerr << "Error: Password cannot be empty." << std::endl;
             return;
         }
 
