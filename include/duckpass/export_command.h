@@ -14,6 +14,6 @@ public:
     static void setup(CLI::App &app);
 
 private:
-    static std::string to_csv(const vault_handler::Vault &vault);
-    static std::string escape_csv_field(const std::string &field);
+    static void write_csv(std::ostream &os, const vault_handler::Vault &vault);
+    static void write_csv_field(std::ostream &os, const duckpass::SecureString &field);
 };

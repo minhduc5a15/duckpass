@@ -5,6 +5,7 @@
 #include <string>
 
 #include "CLI/CLI.hpp"
+#include "duckpass/secure_allocator.h"
 
 void generate_command::setup(CLI::App &app) {
     auto gen_cmd = app.add_subcommand("generate", "Generate a random password");
@@ -28,13 +29,15 @@ void generate_command::setup(CLI::App &app) {
         std::mt19937 generator(rd());
         std::uniform_int_distribution<int> distribution(0, static_cast<int>(chars.length()) - 1);
 
-        std::string password;
+        duckpass::SecureString password;
         password.reserve(*length);
 
         for (int i = 0; i < *length; ++i) {
             password += chars[distribution(generator)];
         }
 
-        std::cout << "Generated Password: " << password << std::endl;
+        std::cout << "Generated Password: ";
+        std::cout.write(password.data(), password.size());
+        std::cout << std::endl;
     });
 }

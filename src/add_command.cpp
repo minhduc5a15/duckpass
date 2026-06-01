@@ -66,13 +66,9 @@ void add_command::setup(CLI::App &app) {
             password = std::move(p1);
         } else {
             // Read from STDIN if not a TTY (for piping)
-            std::string line;
-            if (std::getline(std::cin, line)) {
-                password = duckpass::SecureString(line.begin(), line.end());
-                OPENSSL_cleanse(line.data(), line.length());
-            } else {
-                std::cerr << "Error: Failed to read password from STDIN." << std::endl;
-                return;
+            char c;
+            while (std::cin.get(c) && c != '\n' && c != '\r') {
+                password.push_back(c);
             }
         }
 

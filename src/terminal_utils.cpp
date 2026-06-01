@@ -75,13 +75,14 @@ namespace duckpass::terminal {
      */
     SecureString read_line_interactive(const std::string& prompt, const std::vector<SecureString>& commands,
                                        const std::vector<SecureString>& services) {
-        // Fallback to standard getline if not running in a TTY
+        // Fallback to byte-by-byte reading into SecureString if not running in a TTY
         if (!isatty(STDIN_FILENO)) {
-            std::string line;
-            if (!std::getline(std::cin, line)) {
-                return {};
+            SecureString buffer;
+            char c;
+            while (std::cin.get(c) && c != '\n' && c != '\r') {
+                buffer.push_back(c);
             }
-            return SecureString(line.begin(), line.end());
+            return buffer;
         }
 
         TerminalModeGuard guard;
@@ -181,22 +182,29 @@ namespace duckpass::terminal {
     }
 
     SecureString read_password(const std::string& prompt) {
-        std::cout << prompt;
+        std::cout << prompt << std::flush;
         termios old_term{};
         tcgetattr(STDIN_FILENO, &old_term);
         termios new_term = old_term;
         new_term.c_lflag &= ~ECHO;  // Turn off terminal echo
         tcsetattr(STDIN_FILENO, TCSANOW, &new_term);
 
-        std::string password;
-        std::getline(std::cin, password);
+        SecureString secure_password;
+        char c;
+        // Read byte-by-byte directly into SecureString
+        while (read(STDIN_FILENO, &c, 1) == 1 && c != '\n' && c != '\r') {
+            if (c == '\b' || c == 127) {
+                if (!secure_password.empty()) {
+                    secure_password.pop_back();
+                }
+            } else {
+                secure_password.push_back(c);
+            }
+        }
 
         tcsetattr(STDIN_FILENO, TCSANOW, &old_term);  // Restore terminal settings
         std::cout << std::endl;
 
-        SecureString secure_password(password.begin(), password.end());
-        // Wipe the temporary std::string
-        OPENSSL_cleanse(password.data(), password.length());
         return secure_password;
     }
 

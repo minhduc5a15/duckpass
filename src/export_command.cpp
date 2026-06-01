@@ -54,41 +54,42 @@ void export_command::setup(CLI::App &app) {
             return;
         }
 
-        // 2. Format data
-        std::string output_data;
-        if (*format == "csv") {
-            output_data = to_csv(vault);
-        } else if (*format == "json") {
-            std::string json = "[\n";
-            const auto &entries = vault.get_all_entries();
-            for (size_t i = 0; i < entries.size(); ++i) {
-                const auto &entry = entries[i];
-                std::string s(entry.service.begin(), entry.service.end());
-                std::string u(entry.username.begin(), entry.username.end());
-                std::string p(entry.password.begin(), entry.password.end());
-
-                json += "  {\n";
-                json += "    \"service\": \"" + s + "\",\n";
-                json += "    \"username\": \"" + u + "\",\n";
-                json += "    \"password\": \"" + p + "\"\n";
-                json += "  }";
-                if (i < entries.size() - 1) json += ",";
-                json += "\n";
-            }
-            json += "]";
-            output_data = json;
-        } else {
-            std::cerr << "Error: Invalid format '" << *format << "'. Please use 'csv' or 'json'." << std::endl;
-            return;
-        }
-
-        // 3. Write to file
+        // 2. Open file for writing
         std::ofstream output_file(*output_path);
         if (!output_file) {
             std::cerr << "Error: Could not open file for writing: " << *output_path << std::endl;
             return;
         }
-        output_file << output_data;
+
+        // 3. Write data directly to stream
+        if (*format == "csv") {
+            write_csv(output_file, vault);
+        } else if (*format == "json") {
+            output_file << "[\n";
+            const auto &entries = vault.get_all_entries();
+            for (size_t i = 0; i < entries.size(); ++i) {
+                const auto &entry = entries[i];
+                output_file << "  {\n";
+                output_file << "    \"service\": \"";
+                output_file.write(entry.service.data(), entry.service.size());
+                output_file << "\",\n";
+                output_file << "    \"username\": \"";
+                output_file.write(entry.username.data(), entry.username.size());
+                output_file << "\",\n";
+                output_file << "    \"password\": \"";
+                output_file.write(entry.password.data(), entry.password.size());
+                output_file << "\"\n";
+                output_file << "  }";
+                if (i < entries.size() - 1) output_file << ",";
+                output_file << "\n";
+            }
+            output_file << "]";
+        } else {
+            std::cerr << "Error: Invalid format '" << *format << "'. Please use 'csv' or 'json'." << std::endl;
+            output_file.close();
+            return;
+        }
+
         output_file.close();
 
         // 4. Print success and security warning
@@ -103,31 +104,27 @@ void export_command::setup(CLI::App &app) {
     });
 }
 
-std::string export_command::escape_csv_field(const std::string &field) {
-    std::string result = "\"";
+void export_command::write_csv_field(std::ostream &os, const duckpass::SecureString &field) {
+    os << "\"";
     for (char c : field) {
         if (c == '\"') {
-            result += "\"\"";
+            os << "\"\"";
         } else {
-            result += c;
+            os << c;
         }
     }
-    result += "\"";
-    return result;
+    os << "\"";
 }
 
-std::string export_command::to_csv(const vault_handler::Vault &vault) {
-    std::string csv_string = "service,username,password\n";
+void export_command::write_csv(std::ostream &os, const vault_handler::Vault &vault) {
+    os << "service,username,password\n";
 
     for (const auto &entry : vault.get_all_entries()) {
-        const std::string name(entry.service.begin(), entry.service.end());
-        const std::string username(entry.username.begin(), entry.username.end());
-        const std::string password(entry.password.begin(), entry.password.end());
-
-        csv_string += escape_csv_field(name) + ",";
-        csv_string += escape_csv_field(username) + ",";
-        csv_string += escape_csv_field(password) + "\n";
+        write_csv_field(os, entry.service);
+        os << ",";
+        write_csv_field(os, entry.username);
+        os << ",";
+        write_csv_field(os, entry.password);
+        os << "\n";
     }
-
-    return csv_string;
 }
