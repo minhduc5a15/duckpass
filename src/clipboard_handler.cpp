@@ -89,12 +89,18 @@ namespace clipboard_handler {
         // --- This is the code of the grandchild process (daemon) ---
         // It is now completely independent of the terminal
 
-        // 5. Sleep for the specified duration
-        std::this_thread::sleep_for(delay);
+        // 5. Replace memory with a non-sensitive shell process to avoid memory leaks (CWE-404 / CWE-316)
+        // This process will sleep and then clear the clipboard.
+        const std::string delay_str = std::to_string(delay.count());
+#if defined(__APPLE__)
+        const std::string shell_cmd = "sleep " + delay_str + " && pbcopy < /dev/null";
+#else
+        const std::string shell_cmd = "sleep " + delay_str + " && xclip -selection clipboard /dev/null";
+#endif
+        execlp("sh", "sh", "-c", shell_cmd.c_str(), nullptr);
 
-        // 6. Clear the clipboard and exit
-        set_text("");
-        exit(0);
+        // If execlp fails, exit
+        exit(1);
 #else
         // Other operating systems do not yet support this technique
         // (Windows has a different, more complex way)

@@ -5,6 +5,7 @@
 #include <string_view>
 #include <vector>
 
+#include "duckpass/clipboard_handler.h"
 #include "duckpass/config_handler.h"
 #include "duckpass/terminal_utils.h"
 #include "duckpass/utils.h"
@@ -101,7 +102,8 @@ namespace duckpass::shell {
             } else if (input_view == "help") {
                 std::cout << "Available commands:\n"
                           << "  list [query]     List all services or fuzzy search\n"
-                          << "  get <service>    Get password for a service\n"
+                          << "  get <service>    Copy password for a service to clipboard\n"
+                          << "  get --show <svc> Show password in terminal\n"
                           << "  delete <service> Delete a service entry\n"
                           << "  add              Add a new entry interactively\n"
                           << "  clear            Clear screen\n"
@@ -153,17 +155,35 @@ namespace duckpass::shell {
                     }
                 }
             } else if (input_view.starts_with("get ")) {
-                // Parse service name from 'get <service>'
-                std::string_view service = input_view.substr(4);
-                while (!service.empty() && std::isspace(service.front())) {
-                    service.remove_prefix(1);
+                // Parse service name from 'get <service>' or 'get --show <service>'
+                std::string_view args = input_view.substr(4);
+                while (!args.empty() && std::isspace(args.front())) {
+                    args.remove_prefix(1);
                 }
 
-                auto entry = vault.get_entry(duckpass::SecureString(service.data(), service.size()));
+                bool show = false;
+                if (args.starts_with("--show ")) {
+                    show = true;
+                    args = args.substr(7);
+                    while (!args.empty() && std::isspace(args.front())) {
+                        args.remove_prefix(1);
+                    }
+                }
+
+                auto entry = vault.get_entry(duckpass::SecureString(args.data(), args.size()));
                 if (entry) {
-                    std::cout << "Password: ";
-                    std::cout.write(entry->password.data(), entry->password.size());
-                    std::cout << "\n";
+                    if (show) {
+                        std::cout << "Password: ";
+                        std::cout.write(entry->password.data(), entry->password.size());
+                        std::cout << "\n";
+                    } else {
+                        if (clipboard_handler::set_text(entry->password)) {
+                            std::cout << "Password copied to clipboard. It will be cleared in 30 seconds." << std::endl;
+                            clipboard_handler::clear_after_delay(std::chrono::seconds(30));
+                        } else {
+                            std::cerr << "Error: Could not copy to clipboard. Use 'get --show <service>' to print." << std::endl;
+                        }
+                    }
                 } else {
                     std::cout << "Service not found." << std::endl;
                 }

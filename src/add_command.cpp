@@ -1,7 +1,8 @@
 #include "duckpass/add_command.h"
 
-#include <iostream>
 #include <unistd.h>
+
+#include <iostream>
 
 #include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
@@ -10,7 +11,7 @@
 #include "duckpass/utils.h"
 #include "duckpass/vault.h"
 
-void add_command::setup(CLI::App &app) {
+void add_command::setup(CLI::App& app) {
     auto add_cmd = app.add_subcommand("add", "Add a new entry to the vault");
 
     auto name = std::make_shared<std::string>();
@@ -89,7 +90,7 @@ void add_command::setup(CLI::App &app) {
         try {
             vault_handler::save_vault(vault_path, vault, master_password);
             std::cout << "Vault saved successfully to " << vault_path.string() << std::endl;
-        } catch (const std::exception &e) {
+        } catch (const std::exception& e) {
             std::cerr << "Error saving vault: " << e.what() << std::endl;
         }
     });

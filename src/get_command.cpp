@@ -14,12 +14,12 @@ void get_command::setup(CLI::App &app) {
     auto get_cmd = app.add_subcommand("get", "Get an entry from the vault");
 
     auto name = std::make_shared<std::string>();
-    auto copy_to_clipboard = std::make_shared<bool>(false);
+    auto show_password = std::make_shared<bool>(false);
 
     get_cmd->add_option("name", *name, "The name of the entry to retrieve")->required();
-    get_cmd->add_flag("-c,--copy", *copy_to_clipboard, "Copy the password to clipboard");
+    get_cmd->add_flag("-s,--show", *show_password, "Show the password in terminal instead of copying to clipboard");
 
-    get_cmd->callback([name, copy_to_clipboard]() {
+    get_cmd->callback([name, show_password]() {
         config_handler config;
         auto vault_path = config.get_vault_path();
 
@@ -59,7 +59,11 @@ void get_command::setup(CLI::App &app) {
         const duckpass::SecureString &username = entry.username;
         const duckpass::SecureString &password = entry.password;
 
-        if (*copy_to_clipboard) {
+        if (*show_password) {
+            std::cout << "Entry: " << std::string_view(entry.service.data(), entry.service.size()) << std::endl;
+            std::cout << "  Username: " << std::string_view(username.data(), username.size()) << std::endl;
+            std::cout << "  Password: " << std::string_view(password.data(), password.size()) << std::endl;
+        } else {
             if (clipboard_handler::set_text(password)) {
                 std::cout << "Password for '" << *name << "' copied to clipboard." << std::endl;
 
@@ -68,11 +72,8 @@ void get_command::setup(CLI::App &app) {
                 clipboard_handler::clear_after_delay(std::chrono::seconds(delay_seconds));
             } else {
                 std::cerr << "Error: Could not copy to clipboard." << std::endl;
+                std::cout << "Use --show to print to terminal instead." << std::endl;
             }
-        } else {
-            std::cout << "Entry: " << std::string_view(entry.service.data(), entry.service.size()) << std::endl;
-            std::cout << "  Username: " << std::string_view(username.data(), username.size()) << std::endl;
-            std::cout << "  Password: " << std::string_view(password.data(), password.size()) << std::endl;
         }
     });
 }
