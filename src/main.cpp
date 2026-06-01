@@ -6,13 +6,13 @@
 
 // Command headers
 #include "duckpass/add_command.h"
-#include "duckpass/list_command.h"
-#include "duckpass/get_command.h"
-#include "duckpass/delete_command.h"
-#include "duckpass/generate_command.h"
-#include "duckpass/export_command.h"
-#include "duckpass/shell_command.h"
 #include "duckpass/completion_command.h"
+#include "duckpass/delete_command.h"
+#include "duckpass/export_command.h"
+#include "duckpass/generate_command.h"
+#include "duckpass/get_command.h"
+#include "duckpass/list_command.h"
+#include "duckpass/shell_command.h"
 
 int main(int argc, char** argv) {
     CLI::App app{"duckpass: A modular command-line password manager", "duckpass"};
@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
     // --- Parsing and Execution ---
     try {
         app.parse(argc, argv);
-    } catch (const CLI::ParseError &e) {
+    } catch (const CLI::ParseError& e) {
         return app.exit(e);
     }
 

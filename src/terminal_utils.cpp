@@ -23,7 +23,7 @@ namespace duckpass::terminal {
 
     /**
      * @brief Constructor that puts the terminal into raw mode.
-     * 
+     *
      * Disables canonical mode (line buffering), echo, and various control signals
      * to allow character-by-character processing and custom input handling (like TAB).
      */
@@ -67,7 +67,7 @@ namespace duckpass::terminal {
 
     /**
      * @brief Reads a line of input with interactive features like auto-completion.
-     * 
+     *
      * @param prompt The prompt string to display.
      * @param commands List of available commands for completion.
      * @param services List of vault services for completion.

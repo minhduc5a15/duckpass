@@ -1,4 +1,5 @@
 #include "duckpass/completion_command.h"
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -25,7 +26,7 @@ namespace completion_command {
                 std::cout << sub->get_name() << " ";
             }
         }
-        
+
         // Collect top-level options
         for (const auto* opt : app->get_options({})) {
             for (const auto& s : opt->get_snames()) std::cout << "-" << s << " ";
@@ -34,11 +35,11 @@ namespace completion_command {
 
         std::cout << "\"\n\n"
                   << "    case \"$prev\" in\n";
-        
+
         // Generate cases for each subcommand to provide their specific options
         for (const auto* sub : app->get_subcommands({})) {
             if (sub->get_name().empty()) continue;
-            
+
             std::cout << "        " << sub->get_name() << ")\n"
                       << "            local subopts=\"";
             for (const auto* opt : sub->get_options({})) {
@@ -62,10 +63,9 @@ namespace completion_command {
 
     void setup(CLI::App& app) {
         auto completion_cmd = app.add_subcommand("completion", "Generate shell completion script");
-        
+
         auto shell_type = std::make_shared<std::string>("bash");
-        completion_cmd->add_option("shell", *shell_type, "The shell type (bash)")
-            ->check(CLI::IsMember({"bash"}));
+        completion_cmd->add_option("shell", *shell_type, "The shell type (bash)")->check(CLI::IsMember({"bash"}));
 
         completion_cmd->callback([&app, shell_type]() {
             if (*shell_type == "bash") {
@@ -73,4 +73,4 @@ namespace completion_command {
             }
         });
     }
-}
+}  // namespace completion_command
