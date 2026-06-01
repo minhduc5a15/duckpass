@@ -1,8 +1,7 @@
 #include "duckpass/clipboard_handler.h"
 
-#include <cstdlib>
+#include <cstdio>
 #include <iostream>
-#include <sstream>
 #include <string>
 
 // --- ADD NEW INCLUDES FOR LINUX/MACOS ---
@@ -13,34 +12,45 @@
 #include <thread>
 #endif
 
-// Helper function to escape single quotes for shell commands
-std::string escape_for_shell(const std::string& text) {
-    std::string escaped_text;
-    escaped_text.reserve(text.length());
-    for (char c : text) {
-        if (c == '\'') {
-            escaped_text += "'\\''";  // The shell trick to embed a single quote
-        } else {
-            escaped_text += c;
-        }
-    }
-    return escaped_text;
-}
-
 namespace clipboard_handler {
 
-    bool set_text(const std::string& text) {
-        std::stringstream command_stream;
+    bool set_text(const duckpass::SecureString& text) {
+        const char* command = nullptr;
+
 #if defined(_WIN32)
-        command_stream << "echo | set /p=\"" << text << "\" | clip";
+        command = "clip";
 #elif defined(__APPLE__)
-        command_stream << "printf '%s' '" << escape_for_shell(text) << "' | pbcopy";
+        command = "pbcopy";
 #elif defined(__linux__)
-        command_stream << "printf '%s' '" << escape_for_shell(text) << "' | xclip -selection clipboard";
+        command = "xclip -selection clipboard";
 #else
         return false;
 #endif
-        return system(command_stream.str().c_str()) == 0;
+
+        if (command == nullptr) {
+            return false;
+        }
+
+#if defined(_WIN32)
+        FILE* pipe = _popen(command, "w");
+#else
+        FILE* pipe = popen(command, "w");
+#endif
+
+        if (!pipe) {
+            return false;
+        }
+
+        size_t written = std::fwrite(text.data(), 1, text.size(), pipe);
+        bool success = (written == text.size());
+
+#if defined(_WIN32)
+        int status = _pclose(pipe);
+#else
+        int status = pclose(pipe);
+#endif
+
+        return success && (status == 0);
     }
 
     void clear_after_delay(std::chrono::seconds delay) {

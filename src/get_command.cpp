@@ -60,28 +60,19 @@ void get_command::setup(CLI::App &app) {
         const duckpass::SecureString &password = entry.password;
 
         if (*copy_to_clipboard) {
-            std::string temp_pass = std::string(password.begin(), password.end());
-            if (clipboard_handler::set_text(temp_pass)) {
-                OPENSSL_cleanse(temp_pass.data(), temp_pass.length());
+            if (clipboard_handler::set_text(password)) {
                 std::cout << "Password for '" << *name << "' copied to clipboard." << std::endl;
 
                 const int delay_seconds = 30;
                 std::cout << "It will be cleared automatically in " << delay_seconds << " seconds." << std::endl;
                 clipboard_handler::clear_after_delay(std::chrono::seconds(delay_seconds));
             } else {
-                OPENSSL_cleanse(temp_pass.data(), temp_pass.length());
                 std::cerr << "Error: Could not copy to clipboard." << std::endl;
             }
         } else {
-            std::string temp_pass = std::string(password.begin(), password.end());
-            std::string temp_user = std::string(username.begin(), username.end());
-            std::string temp_service = std::string(entry.service.begin(), entry.service.end());
-            std::cout << "Entry: " << temp_service << std::endl;
-            std::cout << "  Username: " << temp_user << std::endl;
-            std::cout << "  Password: " << temp_pass << std::endl;
-            OPENSSL_cleanse(temp_pass.data(), temp_pass.length());
-            OPENSSL_cleanse(temp_user.data(), temp_user.length());
-            OPENSSL_cleanse(temp_service.data(), temp_service.length());
+            std::cout << "Entry: " << std::string_view(entry.service.data(), entry.service.size()) << std::endl;
+            std::cout << "  Username: " << std::string_view(username.data(), username.size()) << std::endl;
+            std::cout << "  Password: " << std::string_view(password.data(), password.size()) << std::endl;
         }
     });
 }
