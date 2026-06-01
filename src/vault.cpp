@@ -256,8 +256,15 @@ namespace vault_handler {
             backup_path.replace_extension(vault_path.extension().string() + ".bak");
             std::error_code ec;
 
-            // Use std::filesystem::copy_file for safe copying
-            std::filesystem::copy_file(vault_path, backup_path, std::filesystem::copy_options::overwrite_existing, ec);
+            // Vulnerability 2.2 Fix: Prevent Symlink Attack (CWE-59).
+            // Explicitly remove the backup path if it exists or is a symlink.
+            if (std::filesystem::exists(backup_path, ec) || std::filesystem::is_symlink(backup_path, ec)) {
+                std::filesystem::remove(backup_path, ec);
+            }
+
+            // Use std::filesystem::copy_file for safe copying.
+            // Since we removed the target, we don't need overwrite_existing.
+            std::filesystem::copy_file(vault_path, backup_path, std::filesystem::copy_options::none, ec);
 
             // If backup fails (e.g., permission error), warn but don't block main write (Fail-safe)
             if (ec) {

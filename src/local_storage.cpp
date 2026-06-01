@@ -88,9 +88,20 @@ namespace duckpass::storage {
         std::filesystem::path tmp_path = path;
         tmp_path.replace_extension(path.extension().string() + ".tmp");
 
-        // Use O_CREAT | O_TRUNC with restrictive permissions (0600) for security.
-        int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
-        if (fd == -1) throw vault_io_error(std::string("Failed to create temporary file: ") + tmp_path.string() + " (" + std::strerror(errno) + ")");
+        // Vulnerability 2.1 Fix: Use O_EXCL to prevent Symlink attacks (CWE-377/59).
+        // If the .tmp file exists (e.g., from a crash), we must remove it first,
+        // but we MUST ensure we don't follow a symlink to delete a system file.
+        std::error_code ec;
+        if (std::filesystem::exists(tmp_path, ec) || std::filesystem::is_symlink(tmp_path, ec)) {
+            std::filesystem::remove(tmp_path, ec);
+        }
+
+        // Use O_CREAT | O_EXCL with restrictive permissions (0600) for security.
+        int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+        if (fd == -1) {
+            throw vault_io_error(std::string("Failed to create temporary file (possible symlink attack or permission issue): ") + tmp_path.string() +
+                                 " (" + std::strerror(errno) + ")");
+        }
 
         try {
             write_all(fd, data.data(), data.size());
@@ -105,7 +116,6 @@ namespace duckpass::storage {
         close(fd);
 
         // Rename is atomic on POSIX-compliant file systems.
-        std::error_code ec;
         std::filesystem::rename(tmp_path, path, ec);
         if (ec) {
             std::filesystem::remove(tmp_path);

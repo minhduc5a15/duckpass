@@ -18,11 +18,11 @@ namespace clipboard_handler {
         const char* command = nullptr;
 
 #if defined(_WIN32)
-        command = "clip";
+        command = "C:\\Windows\\System32\\clip.exe";
 #elif defined(__APPLE__)
-        command = "pbcopy";
+        command = "/usr/bin/pbcopy";
 #elif defined(__linux__)
-        command = "xclip -selection clipboard";
+        command = "/usr/bin/xclip -selection clipboard";
 #else
         return false;
 #endif
@@ -93,13 +93,13 @@ namespace clipboard_handler {
         // This process will sleep and then clear the clipboard.
         const std::string delay_str = std::to_string(delay.count());
 #if defined(__APPLE__)
-        const std::string shell_cmd = "sleep " + delay_str + " && pbcopy < /dev/null";
+        const std::string shell_cmd = "/usr/bin/sleep " + delay_str + " && /usr/bin/pbcopy < /dev/null";
 #else
-        const std::string shell_cmd = "sleep " + delay_str + " && xclip -selection clipboard /dev/null";
+        const std::string shell_cmd = "/usr/bin/sleep " + delay_str + " && /usr/bin/xclip -selection clipboard /dev/null";
 #endif
-        execlp("sh", "sh", "-c", shell_cmd.c_str(), nullptr);
+        execl("/usr/bin/sh", "sh", "-c", shell_cmd.c_str(), nullptr);
 
-        // If execlp fails, exit
+        // If execl fails, exit
         exit(1);
 #else
         // Other operating systems do not yet support this technique
