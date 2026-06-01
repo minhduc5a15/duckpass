@@ -14,7 +14,7 @@ namespace duckpass::shell {
 
     /**
      * @brief Sets up the 'shell' subcommand for the application.
-     * 
+     *
      * This subcommand enables an interactive shell mode, allowing users
      * to perform multiple vault operations without restarting the program.
      * It features tab-based auto-completion for commands and service names.
@@ -33,14 +33,14 @@ namespace duckpass::shell {
             }
 
             // Prompt for master password once at the start of the session
-            duckpass::SecureString master_password = get_password_silent("Enter master password: ");
+            duckpass::SecureString master_password = utils::get_password_silent("Enter master password: ");
             run_interactive_shell(vault_path, master_password);
         });
     }
 
     /**
      * @brief Runs the main interactive shell loop.
-     * 
+     *
      * @param vault_path Path to the vault file.
      * @param master_password Authenticated master password.
      */
@@ -100,21 +100,56 @@ namespace duckpass::shell {
                 std::cout << "\033[H\033[J" << std::flush;  // ANSI Escape Sequence to clear screen
             } else if (input_view == "help") {
                 std::cout << "Available commands:\n"
-                          << "  list             List all services\n"
+                          << "  list [query]     List all services or fuzzy search\n"
                           << "  get <service>    Get password for a service\n"
                           << "  delete <service> Delete a service entry\n"
-                          << "  add              Add a new entry (use main CLI)\n"
+                          << "  add              Add a new entry interactively\n"
                           << "  clear            Clear screen\n"
                           << "  exit             Exit interactive shell\n";
-            } else if (input_view == "list") {
+            } else if (input_view == "list" || input_view.starts_with("list ")) {
+                std::string_view query = "";
+                if (input_view.starts_with("list ")) {
+                    query = input_view.substr(5);
+                    while (!query.empty() && std::isspace(query.front())) query.remove_prefix(1);
+                }
+
                 auto entries = vault.get_all_entries();
                 if (entries.empty()) {
                     std::cout << "Vault is empty." << std::endl;
-                } else {
+                } else if (query.empty()) {
+                    std::cout << "--- List of all services ---\n";
                     for (const auto& entry : entries) {
                         std::cout << "- ";
                         std::cout.write(entry.service.data(), entry.service.size());
                         std::cout << "\n";
+                    }
+                } else {
+                    struct MatchResult {
+                        const vault_handler::VaultEntry* entry;
+                        int score;
+                    };
+                    std::vector<MatchResult> filtered_results;
+
+                    for (const auto& entry : entries) {
+                        std::string service_str(entry.service.begin(), entry.service.end());
+                        int score = utils::fuzzy_match(query, service_str);
+                        if (score > 0) {
+                            filtered_results.push_back({&entry, score});
+                        }
+                    }
+
+                    if (filtered_results.empty()) {
+                        std::cout << "No services found matching '" << query << "'.\n";
+                    } else {
+                        std::sort(filtered_results.begin(), filtered_results.end(),
+                                  [](const MatchResult& a, const MatchResult& b) { return a.score > b.score; });
+
+                        std::cout << "--- Fuzzy Search Results ---\n";
+                        for (const auto& res : filtered_results) {
+                            std::cout << "[Score: " << res.score << "] ";
+                            std::cout.write(res.entry->service.data(), res.entry->service.size());
+                            std::cout << "\n";
+                        }
                     }
                 }
             } else if (input_view.starts_with("get ")) {
@@ -170,9 +205,9 @@ namespace duckpass::shell {
                     }
 
                     if (vault.get_entry(s_service)) {
-                        std::cerr << "\033[31mError: Service '" << std::string(s_service.begin(), s_service.end()) 
+                        std::cerr << "\033[31mError: Service '" << std::string(s_service.begin(), s_service.end())
                                   << "' already exists. Please delete it first if you want to update.\033[0m" << std::endl;
-                        return; // Return to main shell prompt if user wants to cancel or fix
+                        continue;  // Go back to the main shell prompt
                     }
                     break;
                 }
@@ -191,7 +226,7 @@ namespace duckpass::shell {
 
                 // 3. Validation loop for Password
                 while (true) {
-                    s_password = get_password_silent("Password: ");
+                    s_password = utils::get_password_silent("Password: ");
                     // We don't trim password as spaces might be intentional parts of a passphrase
                     if (s_password.empty()) {
                         std::cerr << "\033[31mError: Password cannot be empty. Please try again.\033[0m" << std::endl;
@@ -208,11 +243,11 @@ namespace duckpass::shell {
                     entry.password = std::move(s_password);
 
                     vault.add_entry(std::move(entry));
-                    
+
                     vault_handler::save_vault(vault_path, vault, master_password);
-                    
+
                     std::cout << "\033[32mSuccessfully added entry for " << display_name << "!\033[0m" << std::endl;
-                    
+
                     refresh_services();
                 } catch (const std::exception& e) {
                     std::cerr << "\033[31mError adding entry: " << e.what() << "\033[0m" << std::endl;

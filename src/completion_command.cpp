@@ -1,8 +1,12 @@
 #include "duckpass/completion_command.h"
 
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <vector>
+
+#include "duckpass/config_handler.h"
+#include "duckpass/vault.h"
 
 namespace completion_command {
 
@@ -70,6 +74,28 @@ namespace completion_command {
         completion_cmd->callback([&app, shell_type]() {
             if (*shell_type == "bash") {
                 generate_bash_completion(&app);
+            }
+        });
+
+        auto raw_list_cmd = app.add_subcommand("__list_services_raw", "Internal command for auto-completion")->group("");
+
+        raw_list_cmd->callback([]() {
+            const char* env_p = std::getenv("DUCKPASS_MASTER_PASSWORD");
+            if (!env_p) return;
+
+            duckpass::SecureString master_password(env_p);
+            try {
+                config_handler config;
+                auto vault_path = config.get_vault_path();
+
+                if (!vault_handler::vault_exists(vault_path)) return;
+
+                auto vault = vault_handler::load_vault(vault_path, master_password);
+                for (const auto& entry : vault.get_all_entries()) {
+                    std::cout << entry.service << "\n";
+                }
+            } catch (...) {
+                // Suppress all exceptions
             }
         });
     }

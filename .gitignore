@@ -5,3 +5,5 @@ rebuild.sh
 out
 .qodo
 .cache
+*.md
+.gemini

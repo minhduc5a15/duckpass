@@ -1,0 +1,42 @@
+#compdef duckpass  
+  
+_duckpass() {  
+    local context state line  
+    typeset -A opt_args  
+  
+    _arguments -C \  
+        '1: :->cmds' \  
+        '*: :->args'  
+  
+    case $state in  
+        cmds)  
+            local subcmds=(  
+                'list:Liệt kê hoặc tìm kiếm mờ tài khoản'  
+                'get:Lấy mật khẩu của một dịch vụ cụ thể'  
+                'delete:Xóa tài khoản khỏi hệ thống'  
+                'generate:Tạo mật khẩu ngẫu nhiên độ an toàn cao'  
+                'export:Xuất cơ sở dữ liệu'  
+                'shell:Khởi chạy chế độ tương tác shell'  
+                'completion:Cài đặt script tự động hoàn thành'  
+            )  
+            _describe -t commands 'duckpass subcommands' subcmds  
+            ;;  
+        args)  
+            case $words[1] in  
+                get|delete|list)  
+                    if [ -n "$DUCKPASS_MASTER_PASSWORD" ]; then  
+                        local -a services  
+                        services=(${(f)"$(duckpass __list_services_raw 2>/dev/null)"})  
+                        if (( $#services > 0 )); then  
+                            _values 'services' $services  
+                        fi  
+                    else  
+                        _message "Gợi ý: Export DUCKPASS_MASTER_PASSWORD để tự động hoàn thành tên dịch vụ"  
+                    fi  
+                    ;;  
+            esac  
+            ;;  
+    esac  
+}  
+  
+_duckpass "$@"

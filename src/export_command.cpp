@@ -30,7 +30,7 @@ void export_command::setup(CLI::App &app) {
         }
 
         // 1. Get password and decrypt vault
-        duckpass::SecureString master_password = get_password_silent("Enter master password to export: ");
+        duckpass::SecureString master_password = utils::get_password_silent("Enter master password to export: ");
         vault_handler::Vault vault;
         try {
             vault = vault_handler::load_vault(vault_path, master_password);

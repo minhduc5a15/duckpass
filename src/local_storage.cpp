@@ -59,7 +59,7 @@ namespace duckpass::storage {
         if (fd == -1) throw vault_io_error(std::string("Failed to open file: ") + path.string() + " (" + std::strerror(errno) + ")");
 
         // Use fstat() on the file descriptor to get the most accurate and safe file size.
-        struct stat st{};
+        struct stat st {};
         if (fstat(fd, &st) == -1) {
             close(fd);
             throw vault_io_error(std::string("Failed to stat file: ") + path.string() + " (" + std::strerror(errno) + ")");

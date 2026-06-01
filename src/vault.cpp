@@ -30,7 +30,7 @@ namespace vault_handler {
 
     /**
      * @brief Writes a string to the buffer: [length (4 bytes, LE)] + [raw data].
-     * 
+     *
      * This helper ensures that strings are stored with their length prefixed,
      * allowing for safe deserialization of arbitrary binary data or strings.
      */
@@ -136,7 +136,7 @@ namespace vault_handler {
 
     /**
      * @brief Loads and decrypts a vault file.
-     * 
+     *
      * Process:
      * 1. Read binary blob from disk.
      * 2. Validate magic bytes ("DUCK") and version.
@@ -201,7 +201,7 @@ namespace vault_handler {
 
     /**
      * @brief Serializes and encrypts a vault to disk.
-     * 
+     *
      * Process:
      * 1. Serialize all vault entries into a packed binary format.
      * 2. Generate cryptographically secure random salt and IV.

@@ -46,4 +46,14 @@ namespace duckpass::terminal {
     SecureString read_line_interactive(const std::string& prompt, const std::vector<SecureString>& commands,
                                        const std::vector<SecureString>& services);
 
+    /**
+     * @brief Reads a password from stdin without echoing.
+     *
+     * @param prompt The prompt to display.
+     * @return The password as a SecureString.
+     */
+    SecureString read_password(const std::string& prompt);
+
 }  // namespace duckpass::terminal
+
+namespace terminal_utils = duckpass::terminal;

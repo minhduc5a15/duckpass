@@ -32,14 +32,14 @@ void add_command::setup(CLI::App &app) {
 
         if (is_new_vault) {
             std::cout << "Info: No vault found. Creating a new one..." << std::endl;
-            master_password = get_password_silent("Enter a new master password: ");
-            duckpass::SecureString confirm_password = get_password_silent("Confirm master password: ");
+            master_password = utils::get_password_silent("Enter a new master password: ");
+            duckpass::SecureString confirm_password = utils::get_password_silent("Confirm master password: ");
             if (master_password.empty() || master_password != confirm_password) {
                 std::cerr << "Error: Passwords do not match or are empty." << std::endl;
                 return;
             }
         } else {
-            master_password = get_password_silent("Enter master password: ");
+            master_password = utils::get_password_silent("Enter master password: ");
             try {
                 vault = vault_handler::load_vault(vault_path, master_password);
             } catch (const duckpass::wrong_password_error &e) {

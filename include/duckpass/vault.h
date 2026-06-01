@@ -1,16 +1,17 @@
 #pragma once
 
-#include <string>
 #include <filesystem>
-#include <vector>
 #include <optional>
 #include <span>
+#include <string>
+#include <vector>
+
 #include "duckpass/secure_allocator.h"
 
 namespace vault_handler {
-    using duckpass::SecureString;
     using duckpass::secure_allocator;
-    
+    using duckpass::SecureString;
+
     const std::string VAULT_PATH = ".duckvault";
 
     /**
@@ -32,9 +33,9 @@ namespace vault_handler {
         using EntryContainer = std::vector<VaultEntry, secure_allocator<VaultEntry>>;
 
         void add_entry(VaultEntry entry);
-        bool remove_entry(const SecureString& service);
-        std::optional<VaultEntry> get_entry(const SecureString& service) const;
-        const EntryContainer& get_all_entries() const { return entries; }
+        bool remove_entry(const SecureString &service);
+        std::optional<VaultEntry> get_entry(const SecureString &service) const;
+        const EntryContainer &get_all_entries() const { return entries; }
 
         // Serialization methods
         duckpass::SecureBytes serialize() const;
@@ -53,4 +54,4 @@ namespace vault_handler {
     // Encrypts and saves the Vault object to the vault file.
     void save_vault(const std::filesystem::path &vault_path, const Vault &vault, const SecureString &master_password);
 
-} // namespace vault_handler
+}  // namespace vault_handler

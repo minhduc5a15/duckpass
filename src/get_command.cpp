@@ -28,7 +28,7 @@ void get_command::setup(CLI::App &app) {
             return;
         }
 
-        duckpass::SecureString master_password = get_password_silent("Enter master password: ");
+        duckpass::SecureString master_password = utils::get_password_silent("Enter master password: ");
         vault_handler::Vault vault;
         try {
             vault = vault_handler::load_vault(vault_path, master_password);
