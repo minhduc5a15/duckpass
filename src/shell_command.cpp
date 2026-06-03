@@ -133,8 +133,7 @@ namespace duckpass::shell {
                     std::vector<MatchResult> filtered_results;
 
                     for (const auto& entry : entries) {
-                        std::string service_str(entry.service.begin(), entry.service.end());
-                        int score = utils::fuzzy_match(query, service_str);
+                        int score = utils::fuzzy_match(query, std::string_view(entry.service.data(), entry.service.size()));
                         if (score > 0) {
                             filtered_results.push_back({&entry, score});
                         }
@@ -143,8 +142,7 @@ namespace duckpass::shell {
                     if (filtered_results.empty()) {
                         std::cout << "No services found matching '" << query << "'.\n";
                     } else {
-                        std::sort(filtered_results.begin(), filtered_results.end(),
-                                  [](const MatchResult& a, const MatchResult& b) { return a.score > b.score; });
+                        std::ranges::sort(filtered_results, [](const MatchResult& a, const MatchResult& b) { return a.score > b.score; });
 
                         std::cout << "--- Fuzzy Search Results ---\n";
                         for (const auto& res : filtered_results) {
@@ -210,8 +208,8 @@ namespace duckpass::shell {
                 duckpass::SecureString s_service, s_username, s_password;
 
                 auto trim_secure = [](duckpass::SecureString& s) {
-                    s.erase(s.begin(), std::find_if(s.begin(), s.end(), [](unsigned char ch) { return !std::isspace(ch); }));
-                    s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
+                    s.erase(s.begin(), std::ranges::find_if(s, [](const unsigned char ch) { return !std::isspace(ch); }));
+                    s.erase(std::ranges::find_if(s.rbegin(), s.rend(), [](const unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
                 };
 
                 // 1. Validation loop for Service Name
