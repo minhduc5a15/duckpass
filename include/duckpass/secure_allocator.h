@@ -4,6 +4,7 @@
 
 #include <cstring>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -18,7 +19,7 @@ namespace duckpass {
         template <typename U>
         explicit secure_allocator(const secure_allocator<U>&) noexcept {}
 
-        static T* allocate(const std::size_t& n) {
+        T* allocate(std::size_t n) {
             if (n > static_cast<std::size_t>(-1) / sizeof(T)) throw std::bad_alloc();
             void* p = OPENSSL_secure_malloc(n * sizeof(T));
             if (!p) {
@@ -27,7 +28,7 @@ namespace duckpass {
             return static_cast<T*>(p);
         }
 
-        static void deallocate(T* p, const std::size_t& n) noexcept {
+        void deallocate(T* p, std::size_t n) noexcept {
             (void)n;
             if (p) {
                 OPENSSL_secure_free(p);
@@ -269,6 +270,11 @@ namespace duckpass {
         auto rbegin() const noexcept { return std::reverse_iterator<const char*>(end()); }
         auto rend() noexcept { return std::reverse_iterator<char*>(begin()); }
         auto rend() const noexcept { return std::reverse_iterator<const char*>(begin()); }
+
+        friend std::ostream& operator<<(std::ostream& os, const SecureString& s) {
+            os.write(s.data(), s.size());
+            return os;
+        }
     };
 
     template <typename T>

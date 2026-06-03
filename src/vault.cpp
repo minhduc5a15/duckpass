@@ -58,7 +58,7 @@ namespace vault_handler {
      */
     duckpass::SecureString read_string(std::span<const uint8_t> bytes, size_t& offset) {
         uint32_t length = read_uint32(bytes, offset);
-        if (offset + length > bytes.size()) throw std::runtime_error("Malformed vault data");
+        if (bytes.size() - offset < length) throw std::runtime_error("Malformed vault data");
 
         duckpass::SecureString str;
         str.reserve(length);
@@ -177,7 +177,7 @@ namespace vault_handler {
         }
 
         // 3. Parse KDF parameters, Salt, and IV
-        crypto_handler::KdfParams kdf_params;
+        crypto_handler::KdfParams kdf_params{};
         kdf_params.time_cost = read_uint32(bytes, offset);
         kdf_params.memory_cost = read_uint32(bytes, offset);
         kdf_params.parallelism = read_uint32(bytes, offset);

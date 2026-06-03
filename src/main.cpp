@@ -1,3 +1,5 @@
+#include <openssl/crypto.h>
+
 #include <iostream>
 #include <memory>
 #include <string>
@@ -17,6 +19,15 @@
 #include "duckpass/shell_command.h"
 
 int main(int argc, char** argv) {
+    // 1. Initialize OpenSSL Secure Heap
+    // Allocate 64KB (65536 bytes) for the Secure Heap, with a minimum fragmentation size of 32 bytes.
+    if (CRYPTO_secure_malloc_init(65536, 32) != 1) {
+        std::cerr << "Critical Security Warning: Failed to initialize OpenSSL Secure Heap.\n"
+                  << "This might be due to insufficient permissions (CAP_IPC_LOCK on Linux) " << "or OS limitations.\n"
+                  << "DuckPass will terminate to prevent sensitive data leakage in memory.\n";
+        return 1;
+    }
+
     CLI::App app{"duckpass: A modular command-line password manager", "duckpass"};
     app.require_subcommand(1);
 
@@ -33,11 +44,15 @@ int main(int argc, char** argv) {
     completion_command::setup(app);
 
     // --- Parsing and Execution ---
+    int exit_code = 0;
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError& e) {
-        return app.exit(e);
+        exit_code = app.exit(e);
     }
 
-    return 0;
+    // Done with secure memory
+    // OPENSSL_secure_malloc_done(); // Optional but clean
+
+    return exit_code;
 }
