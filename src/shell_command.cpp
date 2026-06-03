@@ -29,7 +29,7 @@ namespace duckpass::shell {
 
             // Verify vault existence before entering interactive mode
             if (!vault_handler::vault_exists(vault_path)) {
-                std::cerr << "Error: Vault file not found. Please create a vault first using 'add'." << std::endl;
+                std::cerr << "Error: Vault file not found. Please use 'init' command to create a new vault." << std::endl;
                 return;
             }
 

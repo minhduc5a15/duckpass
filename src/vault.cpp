@@ -105,10 +105,10 @@ namespace vault_handler {
         duckpass::SecureBytes buffer;
         write_uint32(buffer, static_cast<uint32_t>(entries.size()));
 
-        for (const auto& entry : entries) {
-            write_string(buffer, entry.service);
-            write_string(buffer, entry.username);
-            write_string(buffer, entry.password);
+        for (const auto& [service, username, password] : entries) {
+            write_string(buffer, service);
+            write_string(buffer, username);
+            write_string(buffer, password);
         }
         return buffer;
     }

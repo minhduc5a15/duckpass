@@ -1,7 +1,6 @@
 #include <openssl/crypto.h>
 
 #include <iostream>
-#include <memory>
 #include <string>
 
 #include "CLI/CLI.hpp"
