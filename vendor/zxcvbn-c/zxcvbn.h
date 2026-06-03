@@ -48,6 +48,11 @@
 
 #endif
 
+/* DuckPass: Secure allocators for sensitive parsing data */
+#include <openssl/crypto.h>
+#define SecureMallocFn(T,N) ((T *)CRYPTO_secure_malloc((N) * sizeof(T), __FILE__, __LINE__))
+#define SecureFreeFn(P)      CRYPTO_secure_free(P, __FILE__, __LINE__)
+
 /* Enum for the types of match returned in the Info arg to ZxcvbnMatch */
 typedef enum
 {

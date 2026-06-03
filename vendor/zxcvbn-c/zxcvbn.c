@@ -166,7 +166,7 @@ static int Cardinality(const uint8_t *Str, int Len)
  */
 static ZxcMatch_t *AllocMatch()
 {
-    ZxcMatch_t *p = MallocFn(ZxcMatch_t, 1);
+    ZxcMatch_t *p = SecureMallocFn(ZxcMatch_t, 1);
     memset(p, 0, sizeof *p);
     return p;
 }
@@ -201,13 +201,13 @@ static void AddResult(ZxcMatch_t **HeadRef, ZxcMatch_t *Nu, int MaxLen)
         if ((*HeadRef)->MltEnpy <= Nu->MltEnpy)
         {
             /* Existing entry has lower entropy - keep it, discard new entry */
-            FreeFn(Nu);
+            SecureFreeFn(Nu);
         }
         else
         {
             /* New entry has lower entropy - replace existing entry */
             Nu->Next = (*HeadRef)->Next;
-            FreeFn(*HeadRef);
+            SecureFreeFn(*HeadRef);
             *HeadRef = Nu;
         }
     }
@@ -1595,7 +1595,7 @@ double ZxcvbnMatch(const char *Pwd, const char *UserDict[], ZxcMatch_t **Info)
     const uint8_t *Passwd = (const uint8_t *)Pwd;
     uint8_t *RevPwd;
     /* Create the paths */
-    Node_t *Nodes = MallocFn(Node_t, Len+2);
+    Node_t *Nodes = SecureMallocFn(Node_t, Len+2);
     memset(Nodes, 0, (Len+2) * sizeof *Nodes);
     i = Cardinality(Passwd, Len);
     e = log((double)i);
@@ -1621,7 +1621,7 @@ double ZxcvbnMatch(const char *Pwd, const char *UserDict[], ZxcMatch_t **Info)
     }
 
     /* Reverse dictionary words check */
-    RevPwd = MallocFn(uint8_t, Len+1);
+    RevPwd = SecureMallocFn(uint8_t, Len+1);
     for(i = Len-1, j = 0; i >= 0; --i, ++j)
         RevPwd[j] = Pwd[i];
     RevPwd[j] = 0;
@@ -1678,7 +1678,7 @@ double ZxcvbnMatch(const char *Pwd, const char *UserDict[], ZxcMatch_t **Info)
             }
         }
     }
-    FreeFn(RevPwd);
+    SecureFreeFn(RevPwd);
     if (FullLen > Len)
     {
         /* Only the first MAX_DETAIL_LEN characters are used for full  entropy estimation, for */
@@ -1769,7 +1769,7 @@ double ZxcvbnMatch(const char *Pwd, const char *UserDict[], ZxcMatch_t **Info)
                 else
                 {
                     /* Not going on info list, so free it */
-                    FreeFn(Xp);
+                    SecureFreeFn(Xp);
                 }
                 Xp = p;
             }
@@ -1783,11 +1783,11 @@ double ZxcvbnMatch(const char *Pwd, const char *UserDict[], ZxcMatch_t **Info)
         while(Zp)
         {
             ZxcMatch_t *p = Zp->Next;
-            FreeFn(Zp);
+            SecureFreeFn(Zp);
             Zp = p;
         }
     }
-    FreeFn(Nodes);
+    SecureFreeFn(Nodes);
     return e;
 }
 
@@ -1800,7 +1800,7 @@ void ZxcvbnFreeInfo(ZxcMatch_t *Info)
     while(Info)
     {
         p = Info->Next;
-        FreeFn(Info);
+        SecureFreeFn(Info);
         Info = p;
     }
 }
