@@ -14,6 +14,8 @@
 
 // Argon2 for key derivation
 #include <argon2.h>
+#include <iomanip>
+#include <sstream>
 
 namespace crypto_handler {
 
@@ -191,4 +193,42 @@ namespace crypto_handler {
         plaintext_bytes.resize(plaintext_len);
         return plaintext_bytes;
     }
+
+    /**
+     * @brief Helper to compute a message digest (hash) using OpenSSL EVP.
+     */
+    static std::string compute_hash(const SecureString& input, const EVP_MD* md, bool uppercase) {
+        using MdContextPtr = std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>;
+        MdContextPtr ctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+        if (!ctx) {
+            throw duckpass::crypto_error("Failed to create message digest context.");
+        }
+
+        if (EVP_DigestInit_ex(ctx.get(), md, nullptr) != 1) {
+            throw duckpass::crypto_error("Failed to initialize message digest.");
+        }
+
+        if (EVP_DigestUpdate(ctx.get(), input.data(), input.size()) != 1) {
+            throw duckpass::crypto_error("Failed to update message digest.");
+        }
+
+        unsigned char hash[EVP_MAX_MD_SIZE];
+        unsigned int hash_len = 0;
+        if (EVP_DigestFinal_ex(ctx.get(), hash, &hash_len) != 1) {
+            throw duckpass::crypto_error("Failed to finalize message digest.");
+        }
+
+        std::stringstream ss;
+        if (uppercase) ss << std::uppercase;
+        ss << std::hex << std::setfill('0');
+        for (unsigned int i = 0; i < hash_len; ++i) {
+            ss << std::setw(2) << static_cast<int>(hash[i]);
+        }
+        return ss.str();
+    }
+
+    std::string compute_sha1(const SecureString& input) { return compute_hash(input, EVP_sha1(), true); }
+
+    std::string compute_sha256(const SecureString& input) { return compute_hash(input, EVP_sha256(), false); }
+
 }  // namespace crypto_handler

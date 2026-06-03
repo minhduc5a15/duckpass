@@ -22,6 +22,7 @@ namespace vault_handler {
         SecureString service;
         SecureString username;
         SecureString password;
+        uint64_t last_updated = 0;
     };
 
     /**

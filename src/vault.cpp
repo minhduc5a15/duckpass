@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <concepts>
+#include <ctime>
 #include <cstring>
 #include <iostream>
 #include <iterator>
@@ -29,6 +30,15 @@ namespace vault_handler {
     }
 
     /**
+     * @brief Writes a uint64_t to the buffer in Little-Endian format.
+     */
+    void write_uint64(duckpass::SecureBytes& buffer, uint64_t value) {
+        for (int i = 0; i < 8; ++i) {
+            buffer.push_back(static_cast<uint8_t>((value >> (i * 8)) & 0xFF));
+        }
+    }
+
+    /**
      * @brief Writes a string to the buffer: [length (4 bytes, LE)] + [raw data].
      *
      * This helper ensures that strings are stored with their length prefixed,
@@ -43,7 +53,7 @@ namespace vault_handler {
      * @brief Reads a uint32_t from a span in Little-Endian format.
      */
     uint32_t read_uint32(std::span<const uint8_t> bytes, size_t& offset) {
-        if (offset + 4 > bytes.size()) throw std::runtime_error("Malformed vault data");
+        if (offset + 4 > bytes.size()) throw std::runtime_error("Malformed vault data: uint32 overflow");
         uint32_t value = 0;
         value |= static_cast<uint32_t>(bytes[offset]);
         value |= static_cast<uint32_t>(bytes[offset + 1]) << 8;
@@ -54,11 +64,24 @@ namespace vault_handler {
     }
 
     /**
+     * @brief Reads a uint64_t from a span in Little-Endian format.
+     */
+    uint64_t read_uint64(std::span<const uint8_t> bytes, size_t& offset) {
+        if (offset + 8 > bytes.size()) throw std::runtime_error("Malformed vault data: uint64 overflow");
+        uint64_t value = 0;
+        for (int i = 0; i < 8; ++i) {
+            value |= static_cast<uint64_t>(bytes[offset + i]) << (i * 8);
+        }
+        offset += 8;
+        return value;
+    }
+
+    /**
      * @brief Reads a string from a span.
      */
     duckpass::SecureString read_string(std::span<const uint8_t> bytes, size_t& offset) {
         uint32_t length = read_uint32(bytes, offset);
-        if (bytes.size() - offset < length) throw std::runtime_error("Malformed vault data");
+        if (bytes.size() - offset < length) throw std::runtime_error("Malformed vault data: string overflow");
 
         duckpass::SecureString str;
         str.reserve(length);
@@ -72,6 +95,11 @@ namespace vault_handler {
     // --- Vault Class Implementation ---
 
     void Vault::add_entry(VaultEntry entry) {
+        // Update last_updated if not set (e.g., from new entry)
+        if (entry.last_updated == 0) {
+            entry.last_updated = static_cast<uint64_t>(std::time(nullptr));
+        }
+
         auto it = std::ranges::find_if(entries, [&](const VaultEntry& e) { return e.service == entry.service; });
 
         if (it != entries.end()) {
@@ -105,10 +133,11 @@ namespace vault_handler {
         duckpass::SecureBytes buffer;
         write_uint32(buffer, static_cast<uint32_t>(entries.size()));
 
-        for (const auto& [service, username, password] : entries) {
-            write_string(buffer, service);
-            write_string(buffer, username);
-            write_string(buffer, password);
+        for (const auto& entry : entries) {
+            write_string(buffer, entry.service);
+            write_string(buffer, entry.username);
+            write_string(buffer, entry.password);
+            write_uint64(buffer, entry.last_updated);
         }
         return buffer;
     }
@@ -125,6 +154,14 @@ namespace vault_handler {
             entry.service = read_string(bytes, offset);
             entry.username = read_string(bytes, offset);
             entry.password = read_string(bytes, offset);
+
+            // Backward compatibility: check if there's enough data for last_updated
+            if (offset + 8 <= bytes.size()) {
+                entry.last_updated = read_uint64(bytes, offset);
+            } else {
+                entry.last_updated = 0;  // Or some default
+            }
+
             vault.add_entry(std::move(entry));
         }
         return vault;

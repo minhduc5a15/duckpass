@@ -47,4 +47,12 @@ namespace crypto_handler {
     // Throws an exception if authentication fails.
     SecureBytes decrypt_data(std::span<const uint8_t> encrypted_blob, std::span<const uint8_t> key, std::span<const uint8_t> iv,
                              std::span<const uint8_t> aad = {});
+
+    // Computes SHA-1 hash of the input string and returns it as an uppercase hex string.
+    // Used for HaveIBeenPwned API (K-Anonymity).
+    std::string compute_sha1(const SecureString &input);
+
+    // Computes SHA-256 hash of the input string and returns it as a hex string.
+    // Used for internal reuse detection without storing plaintext in RAM.
+    std::string compute_sha256(const SecureString &input);
 }  // namespace crypto_handler
