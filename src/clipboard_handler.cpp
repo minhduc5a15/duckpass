@@ -41,13 +41,13 @@ namespace clipboard_handler {
             return false;
         }
 
-        size_t written = std::fwrite(text.data(), 1, text.size(), pipe);
-        bool success = (written == text.size());
+        size_t const written = std::fwrite(text.data(), 1, text.size(), pipe);
+        bool const success = (written == text.size());
 
 #if defined(_WIN32)
         int status = _pclose(pipe);
 #else
-        int status = pclose(pipe);
+        int const status = pclose(pipe);
 #endif
 
         return success && (status == 0);

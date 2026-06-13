@@ -23,7 +23,7 @@ namespace audit {
         /**
          * @brief Checks a single password synchronously.
          */
-        static HibpResult check_password(const SecureString &password);
+        static HibpResult check_password(const std::string &sha1);
 
     private:
         /**

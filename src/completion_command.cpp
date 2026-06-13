@@ -66,7 +66,7 @@ namespace completion_command {
     }
 
     void setup(CLI::App& app) {
-        auto completion_cmd = app.add_subcommand("completion", "Generate shell completion script");
+        const auto completion_cmd = app.add_subcommand("completion", "Generate shell completion script");
 
         auto shell_type = std::make_shared<std::string>("bash");
         completion_cmd->add_option("shell", *shell_type, "The shell type (bash)")->check(CLI::IsMember({"bash"}));
@@ -77,20 +77,20 @@ namespace completion_command {
             }
         });
 
-        auto raw_list_cmd = app.add_subcommand("__list_services_raw", "Internal command for auto-completion")->group("");
+        const auto raw_list_cmd = app.add_subcommand("__list_services_raw", "Internal command for auto-completion")->group("");
 
         raw_list_cmd->callback([]() {
             const char* env_p = std::getenv("DUCKPASS_MASTER_PASSWORD");
             if (!env_p) return;
 
-            duckpass::SecureString master_password(env_p);
+            duckpass::SecureString const master_password(env_p);
             try {
-                config_handler config;
-                auto vault_path = config.get_vault_path();
+                config_handler const config;
+                const auto vault_path = config.get_vault_path();
 
                 if (!vault_handler::vault_exists(vault_path)) return;
 
-                auto vault = vault_handler::load_vault(vault_path, master_password);
+                const auto vault = vault_handler::load_vault(vault_path, master_password);
                 for (const auto& entry : vault.get_all_entries()) {
                     std::cout << entry.service << "\n";
                 }

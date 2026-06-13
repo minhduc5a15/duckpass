@@ -18,16 +18,16 @@ namespace duckpass::storage {
      * @brief Writes all data from a buffer to a file descriptor.
      * Handles partial writes and EINTR signal interruptions.
      */
-    static void write_all(int fd, const void* buf, size_t count) {
+    static void write_all(const int fd, const void* buf, const size_t count) {
         size_t total_written = 0;
-        const uint8_t* p = static_cast<const uint8_t*>(buf);
+        const auto* p = static_cast<const uint8_t*>(buf);
         while (total_written < count) {
             // Try to write remaining bytes. write() may write fewer bytes than
             // requested (partial write) so we loop until all bytes are written.
             // If write() returns -1 we must check errno: EINTR means the call
             // was interrupted by a signal, and it's safe to retry; other errors
             // are fatal and are reported as a vault_io_error.
-            ssize_t written = write(fd, p + total_written, count - total_written);
+            ssize_t const written = write(fd, p + total_written, count - total_written);
             if (written == -1) {
                 if (errno == EINTR) continue;  // retry on signal interruption
                 throw vault_io_error(std::string("POSIX write failed: ") + std::strerror(errno));
@@ -40,16 +40,16 @@ namespace duckpass::storage {
      * @brief Reads exactly 'count' bytes from a file descriptor.
      * Handles partial reads and EINTR signal interruptions.
      */
-    static void read_all(int fd, void* buf, size_t count) {
+    static void read_all(const int fd, void* buf, const size_t count) {
         size_t total_read = 0;
-        uint8_t* p = static_cast<uint8_t*>(buf);
+        auto* p = static_cast<uint8_t*>(buf);
         while (total_read < count) {
             // read() can return fewer bytes than requested or be interrupted
             // by a signal (EINTR). On EOF (0) before we've read the expected
             // number of bytes treat the file as corrupted. Other errors are
             // converted to vault_io_error so callers get a meaningful
             // exception type.
-            ssize_t bytes_read = read(fd, p + total_read, count - total_read);
+            ssize_t const bytes_read = read(fd, p + total_read, count - total_read);
             if (bytes_read == -1) {
                 if (errno == EINTR) continue;  // retry on signal interruption
                 throw vault_io_error(std::string("POSIX read failed: ") + std::strerror(errno));
@@ -67,7 +67,7 @@ namespace duckpass::storage {
         // Use open() first to get a file descriptor.
         // This avoids TOCTOU (Time-of-Check to Time-of-Use) race conditions
         // compared to checking existence/size before opening.
-        int fd = open(path.c_str(), O_RDONLY);
+        int const fd = open(path.c_str(), O_RDONLY);
         if (fd == -1) throw vault_io_error(std::string("Failed to open file: ") + path.string() + " (" + std::strerror(errno) + ")");
 
         // Use fstat() on the file descriptor to get the most accurate and safe file size.
@@ -80,7 +80,7 @@ namespace duckpass::storage {
         // Use st_size from fstat() (on the opened fd) to determine the file
         // size. Guard against absurdly large sizes which may indicate
         // tampering or an attempt to exhaust resources; here we cap at 500MB.
-        uintmax_t file_size = st.st_size;
+        uintmax_t const file_size = st.st_size;
         if (file_size > 500 * 1024 * 1024) {
             throw vault_io_error("Vault file is too large (over 500MB). Possible tampering.");
         }
@@ -101,7 +101,7 @@ namespace duckpass::storage {
         return buffer;
     }
 
-    void write_file_atomic(const std::filesystem::path& path, std::span<const uint8_t> data) {
+    void write_file_atomic(const std::filesystem::path& path, const std::span<const uint8_t> data) {
         // Atomic write pattern: Write to a temp file, then rename to target.
         // Create a temporary path for atomic write. We use a predictable
         // ".tmp" suffix on the same directory so that rename() remains
@@ -121,7 +121,7 @@ namespace duckpass::storage {
         // when creating the temporary file (mitigates TOCTOU/symlink attacks).
         // Create with restrictive permissions (owner read/write only) to
         // avoid leaking file contents to other users.
-        int fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+        int const fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
         if (fd == -1) {
             throw vault_io_error(std::string("Failed to create temporary file (possible symlink attack or permission issue): ") + tmp_path.string() +
                                  " (" + std::strerror(errno) + ")");
@@ -152,7 +152,7 @@ namespace duckpass::storage {
         // to ensure the rename entry itself is persisted to disk and survives a crash.
         std::filesystem::path parent_dir = path.parent_path();
         if (parent_dir.empty()) parent_dir = ".";
-        int dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY);
+        int const dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY);
         // Sync the parent directory to ensure the rename is persisted. If
         // open() for the directory fails we can't do anything useful; this
         // is a best-effort sync to improve durability.

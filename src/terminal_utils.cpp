@@ -85,7 +85,7 @@ namespace duckpass::terminal {
             return buffer;
         }
 
-        TerminalModeGuard guard;
+        TerminalModeGuard const guard;
 
         SecureString buffer;
         char c;
@@ -98,14 +98,14 @@ namespace duckpass::terminal {
                 break;
             } else if (c == '\t') {  // TAB key - Auto-completion logic
                 std::vector<std::string_view> matches;
-                std::string_view buffer_view(buffer.data(), buffer.size());
+                std::string_view const buffer_view(buffer.data(), buffer.size());
 
                 // 1. Analyze context to decide whether to complete commands or services
-                size_t space_pos = buffer_view.find(' ');
+                size_t const space_pos = buffer_view.find(' ');
 
                 std::string_view prefix_to_match;
                 const std::vector<SecureString>* current_candidates = nullptr;
-                std::string_view base_input = "";  // Stable part of the input (e.g., "get ")
+                std::string_view base_input;  // Stable part of the input (e.g., "get ")
 
                 if (space_pos == std::string_view::npos) {
                     // Context 1: No spaces -> Completing a Command
@@ -113,11 +113,11 @@ namespace duckpass::terminal {
                     current_candidates = &commands;
                 } else {
                     // Context 2: At least one space -> Completing an Argument (Service name)
-                    std::string_view cmd = buffer_view.substr(0, space_pos);
+                    std::string_view const cmd = buffer_view.substr(0, space_pos);
 
                     // Only suggest services for specific commands
                     if (cmd == "get" || cmd == "delete") {
-                        size_t arg_start = buffer_view.find_first_not_of(' ', space_pos);
+                        size_t const arg_start = buffer_view.find_first_not_of(' ', space_pos);
                         if (arg_start == std::string_view::npos) {
                             prefix_to_match = "";  // Just typed "get "
                             base_input = buffer_view;
@@ -132,7 +132,7 @@ namespace duckpass::terminal {
                 // 2. Perform prefix matching against candidates
                 if (current_candidates) {
                     for (const auto& s : *current_candidates) {
-                        std::string_view s_view(s.data(), s.size());
+                        std::string_view const s_view(s.data(), s.size());
                         if (s_view.length() >= prefix_to_match.length() && s_view.substr(0, prefix_to_match.length()) == prefix_to_match) {
                             matches.push_back(s_view);
                         }

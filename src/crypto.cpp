@@ -14,6 +14,7 @@
 
 // Argon2 for key derivation
 #include <argon2.h>
+
 #include <iomanip>
 #include <sstream>
 
@@ -48,10 +49,10 @@ namespace crypto_handler {
      * @return A SecureBytes object containing the derived key.
      * @throws duckpass::crypto_error if Argon2 derivation fails.
      */
-    SecureBytes derive_key_from_password(const SecureString &password, std::span<const uint8_t> salt, const KdfParams &params) {
+    SecureBytes derive_key_from_password(const SecureString& password, const std::span<const uint8_t> salt, const KdfParams& params) {
         SecureBytes key(KEY_BYTES);
-        int result = argon2id_hash_raw(params.time_cost, params.memory_cost, params.parallelism, password.c_str(), password.length(), salt.data(),
-                                       salt.size(), key.data(), key.size());
+        const int result = argon2id_hash_raw(params.time_cost, params.memory_cost, params.parallelism, password.c_str(), password.length(),
+                                             salt.data(), salt.size(), key.data(), key.size());
 
         if (result != ARGON2_OK) {
             throw duckpass::crypto_error("Failed to derive key from password (Argon2). Error: " + std::string(argon2_error_message(result)));
@@ -68,15 +69,15 @@ namespace crypto_handler {
      * @return A vector containing [ciphertext + 16-byte authentication tag].
      * @throws duckpass::crypto_error if encryption fails or data is too large.
      */
-    std::vector<unsigned char> encrypt_data(std::span<const uint8_t> plaintext, std::span<const uint8_t> key, std::span<const uint8_t> iv,
-                                            std::span<const uint8_t> aad) {
+    std::vector<unsigned char> encrypt_data(const std::span<const uint8_t> plaintext, const std::span<const uint8_t> key,
+                                            const std::span<const uint8_t> iv, const std::span<const uint8_t> aad) {
         // Integer overflow protection for OpenSSL API (uses int for size)
         if (plaintext.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
             throw duckpass::crypto_error("Vault data size exceeds OpenSSL's encryption limit (2.1GB).");
         }
 
         // Initialize OpenSSL cipher context
-        CipherContextPtr ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
+        const CipherContextPtr ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
         if (!ctx) {
             ERR_clear_error();
             throw duckpass::crypto_error("Failed to create cipher context.");
@@ -136,18 +137,18 @@ namespace crypto_handler {
      * @throws duckpass::wrong_password_error if the tag verification fails (wrong key/tampered data).
      * @throws duckpass::vault_corrupted_error if the input blob is malformed.
      */
-    SecureBytes decrypt_data(std::span<const uint8_t> encrypted_blob, std::span<const uint8_t> key, std::span<const uint8_t> iv,
-                             std::span<const uint8_t> aad) {
+    SecureBytes decrypt_data(const std::span<const uint8_t> encrypted_blob, const std::span<const uint8_t> key, const std::span<const uint8_t> iv,
+                             const std::span<const uint8_t> aad) {
         if (encrypted_blob.size() < TAG_BYTES) {
             throw duckpass::vault_corrupted_error("Encrypted data is too short.");
         }
 
         // Extract ciphertext and tag from the combined blob
-        std::span<const uint8_t> ciphertext = encrypted_blob.subspan(0, encrypted_blob.size() - TAG_BYTES);
-        std::span<const uint8_t> tag = encrypted_blob.subspan(encrypted_blob.size() - TAG_BYTES, TAG_BYTES);
+        const std::span<const uint8_t> ciphertext = encrypted_blob.subspan(0, encrypted_blob.size() - TAG_BYTES);
+        const std::span<const uint8_t> tag = encrypted_blob.subspan(encrypted_blob.size() - TAG_BYTES, TAG_BYTES);
 
         // Initialize OpenSSL cipher context
-        CipherContextPtr ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
+        const CipherContextPtr ctx(EVP_CIPHER_CTX_new(), EVP_CIPHER_CTX_free);
         if (!ctx) {
             ERR_clear_error();
             throw duckpass::crypto_error("Failed to create cipher context.");
@@ -160,7 +161,7 @@ namespace crypto_handler {
         }
 
         // Set the expected authentication tag. This is crucial for verification.
-        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_BYTES, const_cast<uint8_t *>(tag.data())) != 1) {
+        if (EVP_CIPHER_CTX_ctrl(ctx.get(), EVP_CTRL_GCM_SET_TAG, TAG_BYTES, const_cast<uint8_t*>(tag.data())) != 1) {
             ERR_clear_error();
             throw duckpass::crypto_error("Failed to set GCM authentication tag.");
         }
@@ -197,9 +198,9 @@ namespace crypto_handler {
     /**
      * @brief Helper to compute a message digest (hash) using OpenSSL EVP.
      */
-    static std::string compute_hash(const SecureString& input, const EVP_MD* md, bool uppercase) {
+    static std::string compute_hash(const SecureString& input, const EVP_MD* md, const bool uppercase) {
         using MdContextPtr = std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>;
-        MdContextPtr ctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+        const MdContextPtr ctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
         if (!ctx) {
             throw duckpass::crypto_error("Failed to create message digest context.");
         }

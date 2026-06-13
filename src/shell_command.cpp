@@ -5,11 +5,12 @@
 #include <string_view>
 #include <vector>
 
+#include "duckpass/audit_engine.h"
 #include "duckpass/clipboard_handler.h"
 #include "duckpass/config_handler.h"
 #include "duckpass/terminal_utils.h"
 #include "duckpass/utils.h"
-#include "duckpass/vault.h"
+#include "duckpass/vault_service.h"
 
 namespace duckpass::shell {
 
@@ -21,11 +22,11 @@ namespace duckpass::shell {
      * It features tab-based auto-completion for commands and service names.
      */
     void setup(CLI::App& app) {
-        auto shell_cmd = app.add_subcommand("shell", "Start an interactive shell with auto-completion");
+        const auto shell_cmd = app.add_subcommand("shell", "Start an interactive shell with auto-completion");
 
         shell_cmd->callback([]() {
-            config_handler config;
-            auto vault_path = config.get_vault_path();
+            const config_handler config;
+            const auto vault_path = config.get_vault_path();
 
             // Verify vault existence before entering interactive mode
             if (!vault_handler::vault_exists(vault_path)) {
@@ -34,7 +35,7 @@ namespace duckpass::shell {
             }
 
             // Prompt for master password once at the start of the session
-            duckpass::SecureString master_password = utils::get_password_silent("Enter master password: ");
+            const duckpass::SecureString master_password = utils::get_password_silent("Enter master password: ");
             run_interactive_shell(vault_path, master_password);
         });
     }
@@ -46,10 +47,9 @@ namespace duckpass::shell {
      * @param master_password Authenticated master password.
      */
     void run_interactive_shell(const std::filesystem::path& vault_path, const duckpass::SecureString& master_password) {
-        vault_handler::Vault vault;
+        std::unique_ptr<duckpass::service::VaultService> vault_service;
         try {
-            // Load and decrypt the vault into memory
-            vault = vault_handler::load_vault(vault_path, master_password);
+            vault_service = std::make_unique<duckpass::service::VaultService>(vault_path, master_password);
         } catch (const std::exception& e) {
             std::cerr << "Error loading vault: " << e.what() << std::endl;
             return;
@@ -59,15 +59,15 @@ namespace duckpass::shell {
         std::vector<duckpass::SecureString> services;
 
         // Helper to refresh the service list for auto-completion
-        auto refresh_services = [&]() {
+        const auto refresh_services = [&]() {
             services.clear();
-            for (const auto& entry : vault.get_all_entries()) {
+            for (const auto& entry : vault_service->get_all_entries()) {
                 services.push_back(entry.service);
             }
         };
 
         // Initialize supported shell commands
-        const char* base_cmds[] = {"add", "get", "delete", "list", "exit", "help", "clear"};
+        const char* base_cmds[] = {"add", "get", "delete", "list", "audit", "exit", "help", "clear"};
         for (const char* cmd : base_cmds) {
             duckpass::SecureString s_cmd;
             s_cmd.append(cmd);
@@ -79,7 +79,7 @@ namespace duckpass::shell {
         // Main command-response loop
         while (true) {
             // Read input line with custom terminal handling (supports TAB completion)
-            duckpass::SecureString input = duckpass::terminal::read_line_interactive("duckpass> ", commands, services);
+            const duckpass::SecureString input = duckpass::terminal::read_line_interactive("duckpass> ", commands, services);
             std::string_view input_view(input.data(), input.size());
 
             // Trim leading/trailing whitespace
@@ -106,6 +106,7 @@ namespace duckpass::shell {
                           << "  get --show <svc> Show password in terminal\n"
                           << "  delete <service> Delete a service entry\n"
                           << "  add              Add a new entry interactively\n"
+                          << "  audit [--online] Perform a security audit of your vault\n"
                           << "  clear            Clear screen\n"
                           << "  exit             Exit interactive shell\n";
             } else if (input_view == "list" || input_view.starts_with("list ")) {
@@ -115,41 +116,23 @@ namespace duckpass::shell {
                     while (!query.empty() && std::isspace(query.front())) query.remove_prefix(1);
                 }
 
-                auto entries = vault.get_all_entries();
+                const auto entries = vault_service->list_entries(query);
                 if (entries.empty()) {
-                    std::cout << "Vault is empty." << std::endl;
-                } else if (query.empty()) {
-                    std::cout << "--- List of all services ---\n";
+                    if (query.empty()) {
+                        std::cout << "Vault is empty." << std::endl;
+                    } else {
+                        std::cout << "No services found matching '" << query << "'.\n";
+                    }
+                } else {
+                    if (query.empty()) {
+                        std::cout << "--- List of all services ---\n";
+                    } else {
+                        std::cout << "--- Fuzzy Search Results ---\n";
+                    }
                     for (const auto& entry : entries) {
                         std::cout << "- ";
                         std::cout.write(entry.service.data(), entry.service.size());
                         std::cout << "\n";
-                    }
-                } else {
-                    struct MatchResult {
-                        const vault_handler::VaultEntry* entry;
-                        int score;
-                    };
-                    std::vector<MatchResult> filtered_results;
-
-                    for (const auto& entry : entries) {
-                        int score = utils::fuzzy_match(query, std::string_view(entry.service.data(), entry.service.size()));
-                        if (score > 0) {
-                            filtered_results.push_back({&entry, score});
-                        }
-                    }
-
-                    if (filtered_results.empty()) {
-                        std::cout << "No services found matching '" << query << "'.\n";
-                    } else {
-                        std::ranges::sort(filtered_results, [](const MatchResult& a, const MatchResult& b) { return a.score > b.score; });
-
-                        std::cout << "--- Fuzzy Search Results ---\n";
-                        for (const auto& res : filtered_results) {
-                            std::cout << "[Score: " << res.score << "] ";
-                            std::cout.write(res.entry->service.data(), res.entry->service.size());
-                            std::cout << "\n";
-                        }
                     }
                 }
             } else if (input_view.starts_with("get ")) {
@@ -168,7 +151,7 @@ namespace duckpass::shell {
                     }
                 }
 
-                auto entry = vault.get_entry(duckpass::SecureString(args.data(), args.size()));
+                const auto entry = vault_service->get_entry(duckpass::SecureString(args.data(), args.size()));
                 if (entry) {
                     if (show) {
                         std::cout << "Password: ";
@@ -192,17 +175,14 @@ namespace duckpass::shell {
                     service.remove_prefix(1);
                 }
 
-                if (vault.remove_entry(duckpass::SecureString(service.data(), service.size()))) {
-                    try {
-                        // Persist changes back to disk
-                        vault_handler::save_vault(vault_path, vault, master_password);
-                        std::cout << "Entry deleted successfully." << std::endl;
-                        refresh_services();  // Update completion candidates
-                    } catch (const std::exception& e) {
-                        std::cerr << "Error saving vault: " << e.what() << std::endl;
-                    }
-                } else {
+                try {
+                    vault_service->delete_entry(duckpass::SecureString(service.data(), service.size()));
+                    std::cout << "Entry deleted successfully." << std::endl;
+                    refresh_services();  // Update completion candidates
+                } catch (const std::invalid_argument&) {
                     std::cout << "Service not found." << std::endl;
+                } catch (const std::exception& e) {
+                    std::cerr << "Error saving vault: " << e.what() << std::endl;
                 }
             } else if (input_view == "add") {
                 duckpass::SecureString s_service, s_username, s_password;
@@ -222,7 +202,7 @@ namespace duckpass::shell {
                         continue;
                     }
 
-                    if (vault.get_entry(s_service)) {
+                    if (vault_service->get_entry(s_service)) {
                         std::cerr << "\033[31mError: Service '" << std::string(s_service.begin(), s_service.end())
                                   << "' already exists. Please delete it first if you want to update.\033[0m" << std::endl;
                         continue;  // Go back to the main shell prompt
@@ -254,21 +234,30 @@ namespace duckpass::shell {
                 }
 
                 try {
-                    vault_handler::VaultEntry entry;
-                    std::string display_name(s_service.begin(), s_service.end());
-                    entry.service = std::move(s_service);
-                    entry.username = std::move(s_username);
-                    entry.password = std::move(s_password);
-
-                    vault.add_entry(std::move(entry));
-
-                    vault_handler::save_vault(vault_path, vault, master_password);
+                    std::string const display_name(s_service.begin(), s_service.end());
+                    vault_service->add_entry(std::move(s_service), std::move(s_username), std::move(s_password));
 
                     std::cout << "\033[32mSuccessfully added entry for " << display_name << "!\033[0m" << std::endl;
 
                     refresh_services();
                 } catch (const std::exception& e) {
                     std::cerr << "\033[31mError adding entry: " << e.what() << "\033[0m" << std::endl;
+                }
+            } else if (input_view == "audit" || input_view.starts_with("audit ")) {
+                audit::AuditEngine::Config config;
+                config.check_online = input_view.find("--online") != std::string_view::npos;
+                config.stale_threshold_seconds = 365 * 24 * 3600;
+
+                try {
+                    const audit::ScopedZxcvbn zxcvbn;
+                    std::cout << "Auditing " << vault_service->get_all_entries().size() << " entries...\n";
+                    if (config.check_online) {
+                        std::cout << "(Online check enabled. This may take a moment...)\n";
+                    }
+                    const auto report = vault_service->audit_vault(config);
+                    std::cout << report;
+                } catch (const std::exception& e) {
+                    std::cerr << "Audit failed: " << e.what() << "\n";
                 }
             } else {
                 std::cout << "Unknown command: " << input_view << ". Type 'help' for a list of commands." << std::endl;

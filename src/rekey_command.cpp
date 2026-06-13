@@ -9,25 +9,25 @@
 
 namespace rekey_command {
     void setup(CLI::App& app) {
-        auto rekey_cmd = app.add_subcommand("rekey", "Change master password and re-encrypt the entire Vault");
+        const auto rekey_cmd = app.add_subcommand("rekey", "Change master password and re-encrypt the entire Vault");
 
         rekey_cmd->callback([]() {
-            config_handler config;
-            auto vault_path = config.get_vault_path();
+            config_handler const config;
+            const auto vault_path = config.get_vault_path();
 
             if (!vault_handler::vault_exists(vault_path)) {
                 std::cerr << "Error: No Vault found. Please run 'duckpass init' first.\n";
                 return;
             }
 
-            duckpass::SecureString old_pwd = terminal_utils::read_password("Enter CURRENT Master Password: ");
+            duckpass::SecureString const old_pwd = terminal_utils::read_password("Enter CURRENT Master Password: ");
 
             try {
                 // Try to load vault with old password. Throws exception if wrong password.
-                auto vault = vault_handler::load_vault(vault_path, old_pwd);
+                const auto vault = vault_handler::load_vault(vault_path, old_pwd);
 
-                duckpass::SecureString new_pwd1 = terminal_utils::read_password("Enter NEW Master Password: ");
-                duckpass::SecureString new_pwd2 = terminal_utils::read_password("Re-enter NEW Master Password: ");
+                duckpass::SecureString const new_pwd1 = terminal_utils::read_password("Enter NEW Master Password: ");
+                duckpass::SecureString const new_pwd2 = terminal_utils::read_password("Re-enter NEW Master Password: ");
 
                 if (new_pwd1 != new_pwd2) {
                     std::cerr << "Error: New passwords do not match. Operation cancelled.\n";

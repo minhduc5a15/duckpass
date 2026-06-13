@@ -15,7 +15,7 @@ pkg_check_modules(ARGON2 REQUIRED libargon2)
 # Include zxcvbn-c
 add_library(zxcvbn STATIC vendor/zxcvbn-c/zxcvbn.c)
 target_include_directories(zxcvbn PUBLIC vendor/zxcvbn-c)
-target_compile_definitions(zxcvbn PRIVATE USE_DICT_FILE)
+target_compile_definitions(zxcvbn PUBLIC USE_DICT_FILE)
 
 # Explicitly list all source files
 set(SOURCES
@@ -41,6 +41,7 @@ set(SOURCES
         src/terminal_utils.cpp
         src/utils.cpp
         src/vault.cpp
+        src/vault_service.cpp
 )
 
 # Create the executable from our source files

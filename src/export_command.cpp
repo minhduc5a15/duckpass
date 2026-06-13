@@ -14,7 +14,7 @@
 #include "duckpass/vault.h"
 
 void export_command::setup(CLI::App &app) {
-    auto export_cmd = app.add_subcommand("export", "Export the vault to a plain text file (CSV or JSON)");
+    const auto export_cmd = app.add_subcommand("export", "Export the vault to a plain text file (CSV or JSON)");
 
     auto output_path = std::make_shared<std::filesystem::path>();
     auto format = std::make_shared<std::string>("csv");
@@ -25,7 +25,7 @@ void export_command::setup(CLI::App &app) {
     export_cmd->add_flag("-y,--yes", *force, "Skip confirmation prompt");
 
     export_cmd->callback([output_path, format, force]() {
-        config_handler config;
+        config_handler const config;
         auto vault_path = config.get_vault_path();
 
         if (!vault_handler::vault_exists(vault_path)) {
@@ -48,7 +48,7 @@ void export_command::setup(CLI::App &app) {
         }
 
         // 1. Get password and decrypt vault
-        duckpass::SecureString master_password = utils::get_password_silent("Enter master password to export: ");
+        duckpass::SecureString const master_password = utils::get_password_silent("Enter master password to export: ");
         vault_handler::Vault vault;
         try {
             vault = vault_handler::load_vault(vault_path, master_password);
@@ -73,7 +73,7 @@ void export_command::setup(CLI::App &app) {
 
         // 2. Open file for writing with restrictive permissions (0600)
 #if defined(__linux__) || defined(__APPLE__)
-        mode_t old_mask = umask(0177);  // Set mask so only owner can RW
+        mode_t const old_mask = umask(0177);  // Set mask so only owner can RW
 #endif
         std::ofstream output_file(*output_path);
 #if defined(__linux__) || defined(__APPLE__)
@@ -130,7 +130,7 @@ void export_command::setup(CLI::App &app) {
 
 void export_command::write_csv_field(std::ostream &os, const duckpass::SecureString &field) {
     os << "\"";
-    for (char c : field) {
+    for (char const c : field) {
         if (c == '\"') {
             os << "\"\"";
         } else {

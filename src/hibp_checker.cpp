@@ -1,30 +1,30 @@
 #include "duckpass/hibp_checker.h"
-#include "duckpass/crypto.h"
+
 #include <curl/curl.h>
-#include <algorithm>
-#include <string_view>
+
 #include <chrono>
+#include <string_view>
 #include <thread>
+
+#include "duckpass/crypto.h"
 
 namespace audit {
 
-    size_t HibpChecker::write_callback(void* contents, size_t size, size_t nmemb, void* userp) {
-        ((std::string*)userp)->append((char*)contents, size * nmemb);
+    size_t HibpChecker::write_callback(void* contents, const size_t size, const size_t nmemb, void* userp) {
+        static_cast<std::string*>(userp)->append(static_cast<char*>(contents), size * nmemb);
         return size * nmemb;
     }
 
-    HibpResult HibpChecker::check_password(const SecureString& password) {
+    HibpResult HibpChecker::check_password(const std::string& sha1) {
         HibpResult result{false, 0, ""};
-        
-        std::string sha1 = crypto_handler::compute_sha1(password);
         if (sha1.length() < 5) {
             result.error_message = "Invalid SHA-1 hash.";
             return result;
         }
 
-        std::string_view sha1_view(sha1);
-        std::string_view prefix = sha1_view.substr(0, 5);
-        std::string_view suffix = sha1_view.substr(5);
+        std::string_view const sha1_view(sha1);
+        std::string_view const prefix = sha1_view.substr(0, 5);
+        std::string_view const suffix = sha1_view.substr(5);
 
         CURL* curl = curl_easy_init();
         if (!curl) {
@@ -36,7 +36,7 @@ namespace audit {
         url.append(prefix);
 
         int retry_count = 0;
-        const int max_retries = 3;
+        constexpr int max_retries = 3;
 
         while (retry_count <= max_retries) {
             std::string response_data;
@@ -47,7 +47,7 @@ namespace audit {
             curl_easy_setopt(curl, CURLOPT_USERAGENT, "duckpass/1.0");
             curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
 
-            CURLcode res = curl_easy_perform(curl);
+            CURLcode const res = curl_easy_perform(curl);
             if (res != CURLE_OK) {
                 result.error_message = "CURL request failed: " + std::string(curl_easy_strerror(res));
                 break;
@@ -56,7 +56,7 @@ namespace audit {
             long response_code;
             curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &response_code);
 
-            if (response_code == 429) { // Rate Limit
+            if (response_code == 429) {  // Rate Limit
                 retry_count++;
                 if (retry_count > max_retries) {
                     result.error_message = "HIBP Rate Limit Exceeded after retries.";
@@ -64,7 +64,7 @@ namespace audit {
                 }
                 // Exponential backoff: 2s, 4s, 8s
                 std::this_thread::sleep_for(std::chrono::seconds(1 << retry_count));
-                continue; 
+                continue;
             }
 
             if (response_code != 200) {
@@ -73,7 +73,7 @@ namespace audit {
             }
 
             // ZERO-ALLOCATION PARSING using string_view
-            std::string_view buffer(response_data);
+            std::string_view const buffer(response_data);
             size_t pos = 0;
             while (pos < buffer.size()) {
                 // Find end of line (\r or \n) using find_first_of for robustness
@@ -82,18 +82,18 @@ namespace audit {
                     line_end = buffer.size();
                 }
 
-                std::string_view line = buffer.substr(pos, line_end - pos);
+                std::string_view const line = buffer.substr(pos, line_end - pos);
                 if (!line.empty()) {
-                    size_t colon_pos = line.find(':');
+                    size_t const colon_pos = line.find(':');
                     if (colon_pos != std::string_view::npos) {
-                        std::string_view res_suffix = line.substr(0, colon_pos);
+                        std::string_view const res_suffix = line.substr(0, colon_pos);
                         if (res_suffix == suffix) {
                             result.is_pwned = true;
-                            std::string_view count_str = line.substr(colon_pos + 1);
-                            
+                            std::string_view const count_str = line.substr(colon_pos + 1);
+
                             // Parse count manually to avoid creating std::string
                             result.breach_count = 0;
-                            for (char c : count_str) {
+                            for (char const c : count_str) {
                                 if (c >= '0' && c <= '9') {
                                     result.breach_count = result.breach_count * 10 + (c - '0');
                                 } else if (c == '\r' || c == '\n') {
@@ -111,10 +111,19 @@ namespace audit {
                     pos++;
                 }
             }
-            break; // Success or non-retryable error
+
+            const auto resp_p = const_cast<volatile char*>(response_data.data());
+            for (size_t i = 0; i < response_data.size(); ++i) resp_p[i] = 0;
+            response_data.clear();
+            break;  // Success or non-retryable error
         }
 
         curl_easy_cleanup(curl);
+
+        // ZERO-OUT HASH IN PLACE before returning
+        const auto p = const_cast<volatile char*>(sha1.data());
+        for (size_t i = 0; i < sha1.size(); ++i) p[i] = 0;
+
         return result;
     }
 

@@ -8,7 +8,7 @@
 #include "duckpass/secure_allocator.h"
 
 void generate_command::setup(CLI::App &app) {
-    auto gen_cmd = app.add_subcommand("generate", "Generate a random password");
+    const auto gen_cmd = app.add_subcommand("generate", "Generate a random password");
 
     auto length = std::make_shared<int>(16);
     gen_cmd->add_option("-l,--length", *length, "The desired password length")->default_val(16);
@@ -25,7 +25,7 @@ void generate_command::setup(CLI::App &app) {
             return;
         }
 
-        std::vector<unsigned char> random_bytes = crypto_handler::generate_random_bytes(*length);
+        const std::vector<unsigned char> random_bytes = crypto_handler::generate_random_bytes(*length);
 
         duckpass::SecureString password;
         password.reserve(*length);

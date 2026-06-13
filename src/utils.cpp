@@ -73,8 +73,8 @@ namespace utils {
 
         while (query_idx < query.size() && target_idx < target.size()) {
             // Convert to lowercase for case-insensitive matching
-            char q_char = std::tolower(static_cast<unsigned char>(query[query_idx]));
-            char t_char = std::tolower(static_cast<unsigned char>(target[target_idx]));
+            char const q_char = std::tolower(static_cast<unsigned char>(query[query_idx]));
+            char const t_char = std::tolower(static_cast<unsigned char>(target[target_idx]));
 
             if (q_char == t_char) {
                 query_idx++;
@@ -101,7 +101,7 @@ namespace utils {
         // Check if the entire query was found as a subsequence
         if (query_idx == query.size()) {
             // Length penalty: shorter target strings are preferred
-            int length_difference = static_cast<int>(target.size() - query.size());
+            int const length_difference = static_cast<int>(target.size() - query.size());
             score -= length_difference * 2;
 
             return std::max(1, score);
