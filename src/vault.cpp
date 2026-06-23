@@ -4,7 +4,6 @@
 #include <cerrno>
 #include <ctime>
 #include <iostream>
-#include <iterator>
 #include <span>
 #include <stdexcept>
 #include <vector>
