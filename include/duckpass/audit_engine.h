@@ -1,14 +1,13 @@
 #pragma once
 
-#include "duckpass/vault.h"
-#include "duckpass/entropy_evaluator.h"
-#include "duckpass/hibp_checker.h"
-
-#include <ostream>
-
 #include <map>
+#include <ostream>
 #include <string>
 #include <vector>
+
+#include "duckpass/entropy_evaluator.h"
+#include "duckpass/hibp_checker.h"
+#include "duckpass/vault.h"
 
 namespace audit {
     using vault_handler::Vault;
@@ -40,6 +39,7 @@ namespace audit {
         ~ScopedZxcvbn();
         ScopedZxcvbn(const ScopedZxcvbn&) = delete;
         ScopedZxcvbn& operator=(const ScopedZxcvbn&) = delete;
+
     private:
         bool initialized = false;
     };
@@ -50,14 +50,14 @@ namespace audit {
     public:
         struct Config {
             bool check_online = false;
-            uint64_t stale_threshold_seconds = 31536000; // 1 year
+            uint64_t stale_threshold_seconds = 31536000;  // 1 year
         };
 
-        static AuditReport run_audit(const Vault &vault, const Config &config);
+        static AuditReport run_audit(const Vault& vault, const Config& config);
 
     private:
         // Helper to check for reuses
-        static void analyze_reuses(AuditReport &report);
+        static void analyze_reuses(AuditReport& report);
     };
 
 }  // namespace audit

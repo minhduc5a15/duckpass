@@ -41,6 +41,9 @@ namespace clipboard_handler {
             return false;
         }
 
+        // Disable libc standard buffering to prevent memory leaks in the C standard library heap
+        setvbuf(pipe, nullptr, _IONBF, 0);
+
         size_t const written = std::fwrite(text.data(), 1, text.size(), pipe);
         bool const success = (written == text.size());
 

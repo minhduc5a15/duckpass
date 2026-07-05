@@ -6,8 +6,6 @@
 #include <string_view>
 #include <thread>
 
-#include "duckpass/crypto.h"
-
 namespace audit {
 
     size_t HibpChecker::write_callback(void* contents, const size_t size, const size_t nmemb, void* userp) {
@@ -15,14 +13,14 @@ namespace audit {
         return size * nmemb;
     }
 
-    HibpResult HibpChecker::check_password(const std::string& sha1) {
+    HibpResult HibpChecker::check_password(const duckpass::SecureString& sha1) {
         HibpResult result{false, 0, ""};
         if (sha1.length() < 5) {
             result.error_message = "Invalid SHA-1 hash.";
             return result;
         }
 
-        std::string_view const sha1_view(sha1);
+        std::string_view const sha1_view(sha1.data(), sha1.length());
         std::string_view const prefix = sha1_view.substr(0, 5);
         std::string_view const suffix = sha1_view.substr(5);
 
@@ -119,10 +117,6 @@ namespace audit {
         }
 
         curl_easy_cleanup(curl);
-
-        // ZERO-OUT HASH IN PLACE before returning
-        const auto p = const_cast<volatile char*>(sha1.data());
-        for (size_t i = 0; i < sha1.size(); ++i) p[i] = 0;
 
         return result;
     }

@@ -3,7 +3,6 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
-#include <vector>
 
 #include "duckpass/config_handler.h"
 #include "duckpass/vault.h"
@@ -92,7 +91,9 @@ namespace completion_command {
 
                 const auto vault = vault_handler::load_vault(vault_path, master_password);
                 for (const auto& entry : vault.get_all_entries()) {
-                    std::cout << entry.service << "\n";
+                    duckpass::SecureString s = entry.service.unprotect();
+                    std::cout.write(s.data(), s.size());
+                    std::cout << "\n";
                 }
             } catch (...) {
                 // Suppress all exceptions

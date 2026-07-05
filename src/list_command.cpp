@@ -46,11 +46,11 @@ namespace list_command {
                 if (query.empty()) {
                     std::cout << "--- List of all services ---\n";
                     for (const auto& entry : entries) {
-                        std::cout << "Service: " << entry.service << " | Username: " << entry.username << "\n";
+                        std::cout << "Service: " << entry.service.unprotect() << " | Username: " << entry.username.unprotect() << "\n";
                     }
                 } else {
                     for (const auto& res : entries) {
-                        std::cout << "Service: " << res.service << " | Username: " << res.username << "\n";
+                        std::cout << "Service: " << res.service.unprotect() << " | Username: " << res.username.unprotect() << "\n";
                     }
                 }
             } catch (const duckpass::wrong_password_error& e) {

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <ranges>
 #include <semaphore>
 #include <unordered_map>
 
@@ -28,17 +29,21 @@ namespace audit {
         std::vector<std::future<HibpResult>> hibp_futures;
 
         // Maps SHA-256 hash to a list of indices in the report.entries vector
-        std::unordered_map<std::string, std::vector<size_t>> hash_to_indices;
+        std::unordered_map<duckpass::SecureString, std::vector<size_t>> hash_to_indices;
 
         for (size_t i = 0; i < entries.size(); ++i) {
             const auto& [service, username, password, last_updated] = entries[i];
+            duckpass::SecureString s = service.unprotect();
+            duckpass::SecureString u = username.unprotect();
+            duckpass::SecureString p = password.unprotect();
+
             EntryAuditResult result;
-            result.service = std::string(service.c_str());
-            result.username = std::string(username.c_str());
+            result.service = std::string(s.c_str());
+            result.username = std::string(u.c_str());
             result.last_updated = last_updated;
 
             // 1. Entropy Evaluation
-            result.entropy = EntropyEvaluator::evaluate(password);
+            result.entropy = EntropyEvaluator::evaluate(p);
             if (result.entropy.is_weak) report.weak_passwords++;
 
             // 2. Stale Detection
@@ -46,14 +51,14 @@ namespace audit {
             if (result.is_stale) report.stale_passwords++;
 
             // 3. Reuse Tracking (Prepare hashes)
-            const std::string hash256 = crypto_handler::compute_sha256(password);
+            const duckpass::SecureString hash256 = crypto_handler::compute_sha256(p);
             hash_to_indices[hash256].push_back(i);
 
             // 4. HIBP Online Check (if enabled)
             if (config.check_online) {
                 // SAFE DATA CAPTURE: Compute SHA-1 on the main thread and pass the hash, avoiding plaintext exposure in the thread.
-                const std::string sha1 = crypto_handler::compute_sha1(password);
-                
+                const duckpass::SecureString sha1 = crypto_handler::compute_sha1(p);
+
                 // BATCHING: Acquire slot BEFORE spawning thread to prevent thread explosion
                 network_sem.acquire();
                 hibp_futures.push_back(std::async(std::launch::async, [sha1]() {
@@ -74,7 +79,7 @@ namespace audit {
         }
 
         // 5. Finalize Reuses
-        for (const auto& [hash, indices] : hash_to_indices) {
+        for (const auto& indices : hash_to_indices | std::views::values) {
             if (indices.size() > 1) {
                 report.reused_passwords++;
                 for (size_t const idx : indices) {

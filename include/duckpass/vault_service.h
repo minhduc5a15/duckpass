@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "duckpass/audit_engine.h"
-#include "duckpass/crypto.h"
 #include "duckpass/vault.h"
 
 namespace duckpass::service {
@@ -60,7 +59,7 @@ namespace duckpass::service {
 
     private:
         std::filesystem::path vault_path_;
-        duckpass::SecureString master_password_;
+        duckpass::ProtectedString master_password_;
         vault_handler::Vault vault_;
     };
 

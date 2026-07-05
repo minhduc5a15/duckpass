@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "duckpass/protected_string.h"
 #include "duckpass/secure_allocator.h"
 
 namespace vault_handler {
@@ -19,9 +20,9 @@ namespace vault_handler {
      * Encapsulates data to avoid raw string key access.
      */
     struct VaultEntry {
-        SecureString service;
-        SecureString username;
-        SecureString password;
+        duckpass::ProtectedString service;
+        duckpass::ProtectedString username;
+        duckpass::ProtectedString password;
         uint64_t last_updated = 0;
     };
 

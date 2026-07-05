@@ -16,7 +16,6 @@
 #include <argon2.h>
 
 #include <iomanip>
-#include <sstream>
 
 namespace crypto_handler {
 
@@ -198,7 +197,7 @@ namespace crypto_handler {
     /**
      * @brief Helper to compute a message digest (hash) using OpenSSL EVP.
      */
-    static std::string compute_hash(const SecureString& input, const EVP_MD* md, const bool uppercase) {
+    static SecureString compute_hash(const SecureString& input, const EVP_MD* md, const bool uppercase) {
         using MdContextPtr = std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>;
         const MdContextPtr ctx(EVP_MD_CTX_new(), EVP_MD_CTX_free);
         if (!ctx) {
@@ -219,17 +218,21 @@ namespace crypto_handler {
             throw duckpass::crypto_error("Failed to finalize message digest.");
         }
 
-        std::stringstream ss;
-        if (uppercase) ss << std::uppercase;
-        ss << std::hex << std::setfill('0');
+        SecureString result;
+        result.reserve(hash_len * 2);
+
+        const char* hex_chars = uppercase ? "0123456789ABCDEF" : "0123456789abcdef";
         for (unsigned int i = 0; i < hash_len; ++i) {
-            ss << std::setw(2) << static_cast<int>(hash[i]);
+            result.push_back(hex_chars[(hash[i] >> 4) & 0x0F]);
+            result.push_back(hex_chars[hash[i] & 0x0F]);
         }
-        return ss.str();
+
+        OPENSSL_cleanse(hash, sizeof(hash));
+        return result;
     }
 
-    std::string compute_sha1(const SecureString& input) { return compute_hash(input, EVP_sha1(), true); }
+    SecureString compute_sha1(const SecureString& input) { return compute_hash(input, EVP_sha1(), true); }
 
-    std::string compute_sha256(const SecureString& input) { return compute_hash(input, EVP_sha256(), false); }
+    SecureString compute_sha256(const SecureString& input) { return compute_hash(input, EVP_sha256(), false); }
 
 }  // namespace crypto_handler

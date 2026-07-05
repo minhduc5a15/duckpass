@@ -97,7 +97,7 @@ namespace vault_handler {
             entry.last_updated = static_cast<uint64_t>(std::time(nullptr));
         }
 
-        const auto it = std::ranges::find_if(entries, [&](const VaultEntry& e) { return e.service == entry.service; });
+        const auto it = std::ranges::find_if(entries, [&](const VaultEntry& e) { return e.service.unprotect() == entry.service.unprotect(); });
 
         if (it != entries.end()) {
             *it = std::move(entry);
@@ -107,7 +107,7 @@ namespace vault_handler {
     }
 
     bool Vault::remove_entry(const SecureString& service) {
-        const auto it = std::ranges::remove_if(entries, [&](const VaultEntry& e) { return e.service == service; }).begin();
+        const auto it = std::ranges::remove_if(entries, [&](const VaultEntry& e) { return e.service.unprotect() == service; }).begin();
 
         if (it != entries.end()) {
             entries.erase(it, entries.end());
@@ -117,7 +117,7 @@ namespace vault_handler {
     }
 
     std::optional<VaultEntry> Vault::get_entry(const SecureString& service) const {
-        const auto it = std::ranges::find_if(entries, [&](const VaultEntry& e) { return e.service == service; });
+        const auto it = std::ranges::find_if(entries, [&](const VaultEntry& e) { return e.service.unprotect() == service; });
 
         if (it != entries.end()) {
             return *it;
@@ -131,9 +131,9 @@ namespace vault_handler {
         write_uint32(buffer, static_cast<uint32_t>(entries.size()));
 
         for (const auto& [service, username, password, last_updated] : entries) {
-            write_string(buffer, service);
-            write_string(buffer, username);
-            write_string(buffer, password);
+            write_string(buffer, service.unprotect());
+            write_string(buffer, username.unprotect());
+            write_string(buffer, password.unprotect());
             write_uint64(buffer, last_updated);
         }
         return buffer;
@@ -148,9 +148,9 @@ namespace vault_handler {
         const uint32_t num_entries = read_uint32(bytes, offset);
         for (uint32_t i = 0; i < num_entries; ++i) {
             VaultEntry entry;
-            entry.service = read_string(bytes, offset);
-            entry.username = read_string(bytes, offset);
-            entry.password = read_string(bytes, offset);
+            entry.service = duckpass::ProtectedString(read_string(bytes, offset));
+            entry.username = duckpass::ProtectedString(read_string(bytes, offset));
+            entry.password = duckpass::ProtectedString(read_string(bytes, offset));
 
             // Backward compatibility: check if there's enough data for last_updated
             if (offset + 8 <= bytes.size()) {
@@ -257,7 +257,7 @@ namespace vault_handler {
 
         // 2. Prepare Crypto
         constexpr crypto_handler::KdfParams kdf_params = {crypto_handler::DEFAULT_TIME_COST, crypto_handler::DEFAULT_MEMORY_COST,
-                                                      crypto_handler::DEFAULT_PARALLELISM};
+                                                          crypto_handler::DEFAULT_PARALLELISM};
         const std::vector<uint8_t> salt = crypto_handler::generate_random_bytes(crypto_handler::SALT_BYTES);
         const std::vector<uint8_t> iv = crypto_handler::generate_random_bytes(crypto_handler::IV_BYTES);
 
@@ -293,7 +293,7 @@ namespace vault_handler {
         full_package.insert(full_package.end(), ciphertext.begin(), ciphertext.end());
 
         // =================================================================
-        // AUTOMATIC BACKUP: Create a (.bak) copy before overwriting
+        // AUTOMATIC BACKUP: Rename the old vault file to (.bak) before overwriting
         // =================================================================
         if (std::filesystem::exists(vault_path)) {
             std::filesystem::path backup_path = vault_path;
@@ -301,14 +301,9 @@ namespace vault_handler {
             std::error_code ec;
 
             // Vulnerability 2.2 Fix: Prevent Symlink Attack (CWE-59).
-            // Explicitly remove the backup path if it exists or is a symlink.
-            if (std::filesystem::exists(backup_path, ec) || std::filesystem::is_symlink(backup_path, ec)) {
-                std::filesystem::remove(backup_path, ec);
-            }
-
-            // Use std::filesystem::copy_file for safe copying.
-            // Since we removed the target, we don't need overwrite_existing.
-            std::filesystem::copy_file(vault_path, backup_path, std::filesystem::copy_options::none, ec);
+            // Use atomic rename instead of checking exists() and then copying.
+            // rename() safely overwrites the target (even if it's a symlink) without following it.
+            std::filesystem::rename(vault_path, backup_path, ec);
 
             // If backup fails (e.g., permission error), warn but don't block main write (Fail-safe)
             if (ec) {

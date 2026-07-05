@@ -40,11 +40,12 @@ void get_command::setup(CLI::App &app) {
             }
 
             const auto &entry = *entry_opt;
-            const duckpass::SecureString &username = entry.username;
-            const duckpass::SecureString &password = entry.password;
+            const duckpass::SecureString service_unprotected = entry.service.unprotect();
+            const duckpass::SecureString username = entry.username.unprotect();
+            const duckpass::SecureString password = entry.password.unprotect();
 
             if (*show_password) {
-                std::cout << "Entry: " << std::string_view(entry.service.data(), entry.service.size()) << std::endl;
+                std::cout << "Entry: " << std::string_view(service_unprotected.data(), service_unprotected.size()) << std::endl;
                 std::cout << "  Username: " << std::string_view(username.data(), username.size()) << std::endl;
                 std::cout << "  Password: " << std::string_view(password.data(), password.size()) << std::endl;
             } else {

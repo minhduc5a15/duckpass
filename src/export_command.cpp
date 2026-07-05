@@ -94,14 +94,17 @@ void export_command::setup(CLI::App &app) {
             for (size_t i = 0; i < entries.size(); ++i) {
                 const auto &entry = entries[i];
                 output_file << "  {\n";
+                duckpass::SecureString s = entry.service.unprotect();
+                duckpass::SecureString u = entry.username.unprotect();
+                duckpass::SecureString p = entry.password.unprotect();
                 output_file << R"(    "service": ")";
-                output_file.write(entry.service.data(), entry.service.size());
+                output_file.write(s.data(), s.size());
                 output_file << "\",\n";
                 output_file << R"(    "username": ")";
-                output_file.write(entry.username.data(), entry.username.size());
+                output_file.write(u.data(), u.size());
                 output_file << "\",\n";
                 output_file << R"(    "password": ")";
-                output_file.write(entry.password.data(), entry.password.size());
+                output_file.write(p.data(), p.size());
                 output_file << "\"\n";
                 output_file << "  }";
                 if (i < entries.size() - 1) output_file << ",";
@@ -144,11 +147,11 @@ void export_command::write_csv(std::ostream &os, const vault_handler::Vault &vau
     os << "service,username,password\n";
 
     for (const auto &entry : vault.get_all_entries()) {
-        write_csv_field(os, entry.service);
+        write_csv_field(os, entry.service.unprotect());
         os << ",";
-        write_csv_field(os, entry.username);
+        write_csv_field(os, entry.username.unprotect());
         os << ",";
-        write_csv_field(os, entry.password);
+        write_csv_field(os, entry.password.unprotect());
         os << "\n";
     }
 }

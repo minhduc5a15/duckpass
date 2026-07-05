@@ -3,9 +3,7 @@
 #include <openssl/crypto.h>
 
 #include <cstring>
-#include <memory>
 #include <ostream>
-#include <string>
 #include <vector>
 
 namespace duckpass {
@@ -19,7 +17,7 @@ namespace duckpass {
         template <typename U>
         explicit secure_allocator(const secure_allocator<U>&) noexcept {}
 
-        T* allocate(std::size_t n) {
+        T* allocate(const std::size_t n) {
             if (n > static_cast<std::size_t>(-1) / sizeof(T)) throw std::bad_alloc();
             void* p = OPENSSL_secure_malloc(n * sizeof(T));
             if (!p) {
@@ -28,7 +26,7 @@ namespace duckpass {
             return static_cast<T*>(p);
         }
 
-        void deallocate(T* p, std::size_t n) noexcept {
+        void deallocate(T* p, const std::size_t n) noexcept {
             (void)n;
             if (p) {
                 OPENSSL_secure_free(p);
@@ -58,7 +56,7 @@ namespace duckpass {
             }
             m_buffer.push_back('\0');  // Ensure null-termination
         }
-        explicit SecureString(const char* s, std::size_t count) {
+        explicit SecureString(const char* s, const std::size_t count) {
             if (s) {
                 m_buffer.assign(s, s + count);
             }
@@ -120,8 +118,8 @@ namespace duckpass {
         std::size_t length() const noexcept { return size(); }
         bool empty() const noexcept { return size() == 0; }
 
-        char& operator[](std::size_t pos) { return m_buffer[pos]; }
-        const char& operator[](std::size_t pos) const { return m_buffer[pos]; }
+        char& operator[](const std::size_t pos) { return m_buffer[pos]; }
+        const char& operator[](const std::size_t pos) const { return m_buffer[pos]; }
 
         char* begin() noexcept { return m_buffer.data(); }
         const char* begin() const noexcept { return m_buffer.data(); }
@@ -136,9 +134,9 @@ namespace duckpass {
             m_buffer.push_back('\0');  // Ensure null-termination
         }
 
-        void reserve(std::size_t new_cap) { m_buffer.reserve(new_cap + 1); }
+        void reserve(const std::size_t new_cap) { m_buffer.reserve(new_cap + 1); }
 
-        void push_back(char ch) {
+        void push_back(const char ch) {
             if (!m_buffer.empty()) m_buffer.pop_back();
             m_buffer.push_back(ch);
             m_buffer.push_back('\0');
@@ -157,7 +155,7 @@ namespace duckpass {
         template <typename InputIt>
         void assign(InputIt first, InputIt last) {
             if (first != last) {
-                const char* f_ptr = reinterpret_cast<const char*>(&*first);
+                const auto f_ptr = reinterpret_cast<const char*>(&*first);
                 if (f_ptr >= m_buffer.data() && f_ptr < m_buffer.data() + m_buffer.capacity()) {
                     SecureString temp(first, last);
                     *this = std::move(temp);
@@ -171,7 +169,7 @@ namespace duckpass {
             m_buffer.push_back('\0');
         }
 
-        void assign(const char* s, std::size_t count) {
+        void assign(const char* s, const std::size_t count) {
             if (s && s >= m_buffer.data() && s < m_buffer.data() + m_buffer.capacity()) {
                 SecureString temp(s, count);
                 *this = std::move(temp);
@@ -187,7 +185,7 @@ namespace duckpass {
         template <typename InputIt>
         void append(InputIt first, InputIt last) {
             if (first != last) {
-                const char* f_ptr = reinterpret_cast<const char*>(&*first);
+                const auto f_ptr = reinterpret_cast<const char*>(&*first);
                 if (f_ptr >= m_buffer.data() && f_ptr < m_buffer.data() + m_buffer.capacity()) {
                     SecureString temp(first, last);
                     append(temp.begin(), temp.begin() + temp.size());
@@ -210,7 +208,7 @@ namespace duckpass {
             }
         }
 
-        void erase(char* first, char* last) {
+        void erase(const char* first, char* last) {
             if (first < m_buffer.data() || last > m_buffer.data() + m_buffer.size()) return;
             m_buffer.erase(m_buffer.begin() + (first - m_buffer.data()), m_buffer.begin() + (last - m_buffer.data()));
             if (m_buffer.empty() || m_buffer.back() != '\0') {
@@ -222,7 +220,7 @@ namespace duckpass {
             }
         }
 
-        void erase(const char* first, const char* last) { erase(const_cast<char*>(first), const_cast<char*>(last)); }
+        void erase(const char* first, const char* last) { erase(first, const_cast<char*>(last)); }
 
         SecureString& operator+=(const SecureString& other) {
             if (this == &other) {
@@ -254,7 +252,7 @@ namespace duckpass {
             return *this;
         }
 
-        SecureString& operator+=(char ch) {
+        SecureString& operator+=(const char ch) {
             push_back(ch);
             return *this;
         }
@@ -283,3 +281,11 @@ namespace duckpass {
     using SecureBytes = SecureVector<unsigned char>;
 
 }  // namespace duckpass
+
+template <>
+struct std::hash<duckpass::SecureString> {
+    std::size_t operator()(const duckpass::SecureString& s) const noexcept {
+        const std::string_view sv(s.data(), s.size());
+        return std::hash<std::string_view>{}(sv);
+    }
+};

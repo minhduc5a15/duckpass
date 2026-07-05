@@ -8,11 +8,11 @@
 namespace duckpass::service {
 
     VaultService::VaultService(std::filesystem::path path, duckpass::SecureString master_password)
-        : vault_path_(std::move(path)), master_password_(std::move(master_password)) {
-        vault_ = vault_handler::load_vault(vault_path_, master_password_);
+        : vault_path_(std::move(path)), master_password_(master_password) {
+        vault_ = vault_handler::load_vault(vault_path_, master_password);
     }
 
-    void VaultService::save() const { vault_handler::save_vault(vault_path_, vault_, master_password_); }
+    void VaultService::save() const { vault_handler::save_vault(vault_path_, vault_, master_password_.unprotect()); }
 
     void VaultService::add_entry(duckpass::SecureString service, duckpass::SecureString username, duckpass::SecureString password) {
         if (service.empty()) {
@@ -29,9 +29,9 @@ namespace duckpass::service {
         }
 
         vault_handler::VaultEntry entry;
-        entry.service = std::move(service);
-        entry.username = std::move(username);
-        entry.password = std::move(password);
+        entry.service = duckpass::ProtectedString(service);
+        entry.username = duckpass::ProtectedString(username);
+        entry.password = duckpass::ProtectedString(password);
 
         vault_.add_entry(std::move(entry));
         save();
@@ -67,7 +67,8 @@ namespace duckpass::service {
         std::vector<MatchResult> filtered_results;
 
         for (const auto& entry : all_entries) {
-            const int score = utils::fuzzy_match(query, std::string_view(entry.service.data(), entry.service.size()));
+            duckpass::SecureString s = entry.service.unprotect();
+            const int score = utils::fuzzy_match(query, std::string_view(s.data(), s.size()));
             if (score > 0) {
                 filtered_results.push_back({entry, score});
             }

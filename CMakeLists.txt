@@ -36,6 +36,7 @@ set(SOURCES
         src/list_command.cpp
         src/local_storage.cpp
         src/main.cpp
+        src/protected_string.cpp
         src/rekey_command.cpp
         src/shell_command.cpp
         src/terminal_utils.cpp
@@ -56,6 +57,7 @@ add_executable(audit_tests
         src/vault.cpp
         src/hibp_checker.cpp
         src/local_storage.cpp
+        src/protected_string.cpp
 )
 
 # Tell the 'duckpass' executable where to find its public header files

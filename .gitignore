@@ -11,3 +11,4 @@ out
 task
 reports
 !README.md
+*.sh

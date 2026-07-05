@@ -20,15 +20,15 @@ namespace crypto_handler {
     };
 
     // Default Argon2 constants
-    const uint32_t DEFAULT_TIME_COST = 2;
-    const uint32_t DEFAULT_MEMORY_COST = 65536;  // 64 MB
-    const uint32_t DEFAULT_PARALLELISM = 1;
+    constexpr uint32_t DEFAULT_TIME_COST = 2;
+    constexpr uint32_t DEFAULT_MEMORY_COST = 65536;  // 64 MB
+    constexpr uint32_t DEFAULT_PARALLELISM = 1;
 
     // Constants for AES-GCM
-    const int SALT_BYTES = 16;
-    const int KEY_BYTES = 32;  // 256-bit key
-    const int IV_BYTES = 12;   // GCM standard is 12 bytes (96 bits) for IV
-    const int TAG_BYTES = 16;  // GCM authentication tag
+    constexpr int SALT_BYTES = 16;
+    constexpr int KEY_BYTES = 32;  // 256-bit key
+    constexpr int IV_BYTES = 12;   // GCM standard is 12 bytes (96 bits) for IV
+    constexpr int TAG_BYTES = 16;  // GCM authentication tag
 
     // Generates a vector of cryptographically secure random bytes.
     std::vector<unsigned char> generate_random_bytes(int num_bytes);
@@ -50,9 +50,9 @@ namespace crypto_handler {
 
     // Computes SHA-1 hash of the input string and returns it as an uppercase hex string.
     // Used for HaveIBeenPwned API (K-Anonymity).
-    std::string compute_sha1(const SecureString &input);
+    SecureString compute_sha1(const SecureString &input);
 
     // Computes SHA-256 hash of the input string and returns it as a hex string.
     // Used for internal reuse detection without storing plaintext in RAM.
-    std::string compute_sha256(const SecureString &input);
+    SecureString compute_sha256(const SecureString &input);
 }  // namespace crypto_handler

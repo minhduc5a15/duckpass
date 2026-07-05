@@ -1,9 +1,10 @@
 #pragma once
 
-#include "duckpass/secure_allocator.h"
+#include <future>
 #include <string>
 #include <vector>
-#include <future>
+
+#include "duckpass/secure_allocator.h"
 
 namespace audit {
     using duckpass::SecureString;
@@ -23,7 +24,7 @@ namespace audit {
         /**
          * @brief Checks a single password synchronously.
          */
-        static HibpResult check_password(const std::string &sha1);
+        static HibpResult check_password(const duckpass::SecureString &sha1);
 
     private:
         /**

@@ -62,7 +62,7 @@ namespace duckpass::shell {
         const auto refresh_services = [&]() {
             services.clear();
             for (const auto& entry : vault_service->get_all_entries()) {
-                services.push_back(entry.service);
+                services.push_back(entry.service.unprotect());
             }
         };
 
@@ -110,7 +110,7 @@ namespace duckpass::shell {
                           << "  clear            Clear screen\n"
                           << "  exit             Exit interactive shell\n";
             } else if (input_view == "list" || input_view.starts_with("list ")) {
-                std::string_view query = "";
+                std::string_view query;
                 if (input_view.starts_with("list ")) {
                     query = input_view.substr(5);
                     while (!query.empty() && std::isspace(query.front())) query.remove_prefix(1);
@@ -131,7 +131,8 @@ namespace duckpass::shell {
                     }
                     for (const auto& entry : entries) {
                         std::cout << "- ";
-                        std::cout.write(entry.service.data(), entry.service.size());
+                        duckpass::SecureString s = entry.service.unprotect();
+                        std::cout.write(s.data(), s.size());
                         std::cout << "\n";
                     }
                 }
@@ -153,12 +154,13 @@ namespace duckpass::shell {
 
                 const auto entry = vault_service->get_entry(duckpass::SecureString(args.data(), args.size()));
                 if (entry) {
+                    duckpass::SecureString p = entry->password.unprotect();
                     if (show) {
                         std::cout << "Password: ";
-                        std::cout.write(entry->password.data(), entry->password.size());
+                        std::cout.write(p.data(), p.size());
                         std::cout << "\n";
                     } else {
-                        if (clipboard_handler::set_text(entry->password)) {
+                        if (clipboard_handler::set_text(p)) {
                             std::cout << "Password copied to clipboard. It will be cleared in 30 seconds." << std::endl;
                             clipboard_handler::clear_after_delay(std::chrono::seconds(30));
                         } else {

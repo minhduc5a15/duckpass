@@ -6,8 +6,8 @@ namespace audit {
     using duckpass::SecureString;
 
     struct EntropyScore {
-        int score;                // 0-4 (zxcvbn scale)
-        double entropy_bits;      // Raw entropy in bits
+        int score;            // 0-4 (zxcvbn scale)
+        double entropy_bits;  // Raw entropy in bits
         double crack_time_seconds;
         bool is_weak;
     };
