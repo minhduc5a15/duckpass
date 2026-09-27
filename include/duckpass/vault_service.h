@@ -26,10 +26,31 @@ namespace duckpass::service {
         void save() const;
 
         /**
+         * @brief Changes the master password and re-encrypts the vault to disk.
+         * Throws std::invalid_argument if new_master_password is empty.
+         */
+        void rekey(duckpass::SecureString new_master_password);
+
+        /**
          * @brief Adds a new entry to the vault and automatically saves to disk.
          * Throws std::invalid_argument if service name is empty or already exists.
          */
-        void add_entry(duckpass::SecureString service, duckpass::SecureString username, duckpass::SecureString password);
+        void add_entry(duckpass::SecureString service, duckpass::SecureString username, duckpass::SecureString password,
+                       duckpass::SecureString totp_secret = {});
+
+        /**
+         * @brief Updates an existing entry in the vault and automatically saves to disk.
+         * Throws std::invalid_argument if the service is not found.
+         */
+        void update_entry(const duckpass::SecureString& service, std::optional<duckpass::SecureString> new_username = std::nullopt,
+                          std::optional<duckpass::SecureString> new_password = std::nullopt,
+                          std::optional<duckpass::SecureString> new_totp_secret = std::nullopt);
+
+        /**
+         * @brief Generates current TOTP code for a service.
+         * Throws std::invalid_argument if service has no TOTP secret or service not found.
+         */
+        std::string get_totp_code(const duckpass::SecureString& service, uint32_t* out_remaining_seconds = nullptr) const;
 
         /**
          * @brief Deletes an entry from the vault and automatically saves to disk.

@@ -125,22 +125,23 @@ namespace vault_handler {
         return std::nullopt;
     }
 
-    // Serializes vault entries into a binary format
+    // Serializes vault entries into a binary format (Version 3)
     duckpass::SecureBytes Vault::serialize() const {
         duckpass::SecureBytes buffer;
         write_uint32(buffer, static_cast<uint32_t>(entries.size()));
 
-        for (const auto& [service, username, password, last_updated] : entries) {
+        for (const auto& [service, username, password, totp_secret, last_updated] : entries) {
             write_string(buffer, service.unprotect());
             write_string(buffer, username.unprotect());
             write_string(buffer, password.unprotect());
             write_uint64(buffer, last_updated);
+            write_string(buffer, totp_secret.unprotect());
         }
         return buffer;
     }
 
     // Deserializes binary data back into a Vault object
-    Vault Vault::deserialize(const std::span<const uint8_t> bytes) {
+    Vault Vault::deserialize(const std::span<const uint8_t> bytes, const uint32_t version) {
         Vault vault;
         size_t offset = 0;
         if (bytes.empty()) return vault;
@@ -152,11 +153,16 @@ namespace vault_handler {
             entry.username = duckpass::ProtectedString(read_string(bytes, offset));
             entry.password = duckpass::ProtectedString(read_string(bytes, offset));
 
-            // Backward compatibility: check if there's enough data for last_updated
+            // Gracefully handle older formats without last_updated or totp_secret
             if (offset + 8 <= bytes.size()) {
                 entry.last_updated = read_uint64(bytes, offset);
             } else {
-                entry.last_updated = 0;  // Or some default
+                entry.last_updated = 0;
+            }
+
+            // Version >= 3 has totp_secret
+            if (version >= 3 && offset + 4 <= bytes.size()) {
+                entry.totp_secret = duckpass::ProtectedString(read_string(bytes, offset));
             }
 
             vault.add_entry(std::move(entry));
@@ -199,14 +205,14 @@ namespace vault_handler {
         offset += 4;
 
         const uint32_t version = read_uint32(bytes, offset);
-        if (version != 1 && version != 2) {
+        if (version != 1 && version != 2 && version != 3) {
             throw duckpass::vault_corrupted_error("Unsupported vault version: " + std::to_string(version));
         }
 
-        // For version 2, the entire header is protected by GCM AAD.
+        // For version 2 and 3, the entire header is protected by GCM AAD.
         constexpr size_t header_size = 8 + 3 * sizeof(uint32_t) + crypto_handler::SALT_BYTES + crypto_handler::IV_BYTES;
         std::span<const uint8_t> aad;
-        if (version == 2) {
+        if (version >= 2) {
             aad = bytes.subspan(0, header_size);
         }
 
@@ -237,7 +243,7 @@ namespace vault_handler {
         const crypto_handler::SecureBytes key = crypto_handler::derive_key_from_password(master_password, salt, kdf_params);
         const crypto_handler::SecureBytes plaintext_bytes = crypto_handler::decrypt_data(ciphertext, key, iv, aad);
 
-        return Vault::deserialize(plaintext_bytes);
+        return Vault::deserialize(plaintext_bytes, version);
     }
 
     /**
@@ -273,8 +279,8 @@ namespace vault_handler {
         header.push_back('C');
         header.push_back('K');
 
-        // Version 2 (uses AAD for the header)
-        write_uint32(header, 2);
+        // Version 3 (uses AAD for the header, supports totp_secret)
+        write_uint32(header, 3);
 
         // KDF Params
         write_uint32(header, kdf_params.time_cost);

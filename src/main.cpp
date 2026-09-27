@@ -17,6 +17,7 @@
 #include "duckpass/get_command.h"
 #include "duckpass/init_command.h"
 #include "duckpass/list_command.h"
+#include "duckpass/otp_command.h"
 #include "duckpass/rekey_command.h"
 #include "duckpass/shell_command.h"
 
@@ -45,6 +46,7 @@ int main(int argc, char** argv) {
     delete_command::setup(app);
     generate_command::setup(app);
     export_command::setup(app);
+    otp_command::setup(app);
     audit::setup_audit_command(app);
     duckpass::shell::setup(app);
     completion_command::setup(app);
@@ -57,7 +59,9 @@ int main(int argc, char** argv) {
         exit_code = app.exit(e);
     }
 
+    duckpass::ProtectedString::cleanse_session_key();
     curl_global_cleanup();
+    CRYPTO_secure_malloc_done();
 
     return exit_code;
 }

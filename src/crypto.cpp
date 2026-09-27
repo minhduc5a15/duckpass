@@ -235,4 +235,41 @@ namespace crypto_handler {
 
     SecureString compute_sha256(const SecureString& input) { return compute_hash(input, EVP_sha256(), false); }
 
+    SecureString generate_password(const int length) {
+        if (length <= 0) {
+            throw std::invalid_argument("Password length must be positive.");
+        }
+
+        constexpr std::string_view chars =
+            "abcdefghijklmnopqrstuvwxyz"
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "0123456789"
+            "!@#$%^&*()-_=+[]{}|;:',.<>?/";
+
+        const size_t charset_len = chars.length();
+        // Rejection sampling bound: reject any byte >= max_usable to guarantee zero modulo bias
+        const auto max_usable = static_cast<uint8_t>((256 / charset_len) * charset_len);
+
+        SecureString password;
+        password.reserve(static_cast<size_t>(length));
+
+        while (static_cast<int>(password.size()) < length) {
+            const int needed = length - static_cast<int>(password.size());
+            const int batch_size = std::max(needed * 2, 16);
+            std::vector<unsigned char> random_bytes = generate_random_bytes(batch_size);
+
+            for (const unsigned char b : random_bytes) {
+                if (b < max_usable) {
+                    password.push_back(chars[b % charset_len]);
+                    if (static_cast<int>(password.size()) == length) {
+                        break;
+                    }
+                }
+            }
+            OPENSSL_cleanse(random_bytes.data(), random_bytes.size());
+        }
+
+        return password;
+    }
+
 }  // namespace crypto_handler

@@ -23,6 +23,7 @@ namespace vault_handler {
         duckpass::ProtectedString service;
         duckpass::ProtectedString username;
         duckpass::ProtectedString password;
+        duckpass::ProtectedString totp_secret;
         uint64_t last_updated = 0;
     };
 
@@ -41,7 +42,7 @@ namespace vault_handler {
 
         // Serialization methods
         duckpass::SecureBytes serialize() const;
-        static Vault deserialize(std::span<const uint8_t> bytes);
+        static Vault deserialize(std::span<const uint8_t> bytes, uint32_t version = 3);
 
     private:
         EntryContainer entries;

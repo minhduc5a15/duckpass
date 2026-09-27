@@ -4,8 +4,9 @@
 
 #include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
+#include "duckpass/exceptions.h"
 #include "duckpass/terminal_utils.h"
-#include "duckpass/vault.h"
+#include "duckpass/vault_service.h"
 
 namespace rekey_command {
     void setup(CLI::App& app) {
@@ -23,8 +24,7 @@ namespace rekey_command {
             duckpass::SecureString const old_pwd = terminal_utils::read_password("Enter CURRENT Master Password: ");
 
             try {
-                // Try to load vault with old password. Throws exception if wrong password.
-                const auto vault = vault_handler::load_vault(vault_path, old_pwd);
+                duckpass::service::VaultService vault_service(vault_path, old_pwd);
 
                 duckpass::SecureString const new_pwd1 = terminal_utils::read_password("Enter NEW Master Password: ");
                 duckpass::SecureString const new_pwd2 = terminal_utils::read_password("Re-enter NEW Master Password: ");
@@ -34,14 +34,10 @@ namespace rekey_command {
                     return;
                 }
 
-                if (new_pwd1.empty()) {
-                    std::cerr << "Error: New master password cannot be empty.\n";
-                    return;
-                }
-
-                // Save vault with new password. save_vault ensures new cryptographic parameters are generated.
-                vault_handler::save_vault(vault_path, vault, new_pwd1);
+                vault_service.rekey(new_pwd1);
                 std::cout << "[✓] Master password changed successfully! Vault has been re-encrypted.\n";
+            } catch (const duckpass::wrong_password_error& e) {
+                std::cerr << "Error: " << e.what() << "\n";
             } catch (const std::exception& e) {
                 std::cerr << "Error: " << e.what() << "\n";
             }

@@ -55,4 +55,7 @@ namespace crypto_handler {
     // Computes SHA-256 hash of the input string and returns it as a hex string.
     // Used for internal reuse detection without storing plaintext in RAM.
     SecureString compute_sha256(const SecureString &input);
+
+    // Generates a cryptographically strong random password using Rejection Sampling to eliminate Modulo Bias.
+    SecureString generate_password(int length);
 }  // namespace crypto_handler

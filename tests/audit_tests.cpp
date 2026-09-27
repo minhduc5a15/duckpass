@@ -111,14 +111,11 @@ void test_vault_compatibility() {
 
 int main() {
     try {
-        if (!ZxcvbnInit("zxcvbn.dict")) {
-            std::cerr << "Warning: Could not initialize zxcvbn.dict. Tests will run with limited entropy evaluation." << std::endl;
-        }
+        audit::ScopedZxcvbn zxcvbn_guard;
         test_hashing();
         test_entropy();
         test_audit_engine();
         test_vault_compatibility();
-        ZxcvbnUnInit();
         std::cout << "\nALL TESTS PASSED!" << std::endl;
     } catch (const std::exception& e) {
         std::cerr << "\nTEST FAILED with exception: " << e.what() << std::endl;

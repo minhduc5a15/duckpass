@@ -8,16 +8,27 @@
 namespace duckpass {
 
     namespace {
-        // Global Session Key
-        std::vector<unsigned char> g_session_key;
+        // Global Session Key residing in OpenSSL Secure Heap
+        SecureBytes g_session_key;
         std::once_flag g_session_key_flag;
     }  // namespace
 
     void ProtectedString::ensure_session_key_initialized() {
-        std::call_once(g_session_key_flag, []() { g_session_key = crypto_handler::generate_random_bytes(crypto_handler::KEY_BYTES); });
+        std::call_once(g_session_key_flag, []() {
+            auto raw_key = crypto_handler::generate_random_bytes(crypto_handler::KEY_BYTES);
+            g_session_key.assign(raw_key.begin(), raw_key.end());
+            OPENSSL_cleanse(raw_key.data(), raw_key.size());
+        });
     }
 
     void ProtectedString::initialize_session_key() { ensure_session_key_initialized(); }
+
+    void ProtectedString::cleanse_session_key() {
+        if (!g_session_key.empty()) {
+            OPENSSL_cleanse(g_session_key.data(), g_session_key.size());
+            g_session_key.clear();
+        }
+    }
 
     ProtectedString::ProtectedString() { ensure_session_key_initialized(); }
 

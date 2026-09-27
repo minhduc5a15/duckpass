@@ -17,8 +17,8 @@ add_library(zxcvbn STATIC vendor/zxcvbn-c/zxcvbn.c)
 target_include_directories(zxcvbn PUBLIC vendor/zxcvbn-c)
 target_compile_definitions(zxcvbn PUBLIC USE_DICT_FILE)
 
-# Explicitly list all source files
-set(SOURCES
+# Explicitly list core source files (excluding main.cpp)
+set(CORE_SOURCES
         src/add_command.cpp
         src/audit_command.cpp
         src/audit_engine.cpp
@@ -35,49 +35,64 @@ set(SOURCES
         src/init_command.cpp
         src/list_command.cpp
         src/local_storage.cpp
-        src/main.cpp
+        src/otp_command.cpp
         src/protected_string.cpp
         src/rekey_command.cpp
         src/shell_command.cpp
         src/terminal_utils.cpp
+        src/totp.cpp
         src/utils.cpp
         src/vault.cpp
         src/vault_service.cpp
 )
 
-# Create the executable from our source files
-add_executable(duckpass ${SOURCES})
+# Core static library
+add_library(duckpass_core STATIC ${CORE_SOURCES})
+target_include_directories(duckpass_core PUBLIC
+        "${CMAKE_SOURCE_DIR}/include"
+        "${CMAKE_SOURCE_DIR}/vendor"
+        ${ARGON2_INCLUDE_DIRS}
+)
+target_link_libraries(duckpass_core PUBLIC OpenSSL::Crypto ${ARGON2_LIBRARIES} CURL::libcurl zxcvbn)
 
-# Test executable
+# Create the main executable from our core library + main.cpp
+add_executable(duckpass src/main.cpp)
+target_link_libraries(duckpass PRIVATE duckpass_core)
+
+# Legacy test executable
 add_executable(audit_tests
         tests/audit_tests.cpp
-        src/crypto.cpp
-        src/entropy_evaluator.cpp
-        src/audit_engine.cpp
-        src/vault.cpp
-        src/hibp_checker.cpp
-        src/local_storage.cpp
-        src/protected_string.cpp
+)
+target_link_libraries(audit_tests PRIVATE duckpass_core)
+
+# --- GoogleTest Integration via FetchContent ---
+include(FetchContent)
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG        v1.14.0
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+enable_testing()
+
+set(UNIT_TEST_SOURCES
+        tests/test_main.cpp
+        tests/crypto_test.cpp
+        tests/storage_test.cpp
+        tests/protected_string_test.cpp
+        tests/vault_service_test.cpp
+        tests/audit_test.cpp
+        tests/totp_test.cpp
 )
 
-# Tell the 'duckpass' executable where to find its public header files
-# and vendor libraries.
-target_include_directories(duckpass PUBLIC
-        "${CMAKE_SOURCE_DIR}/include"
-        "${CMAKE_SOURCE_DIR}/vendor"
-        ${ARGON2_INCLUDE_DIRS}
-)
-target_include_directories(audit_tests PUBLIC
-        "${CMAKE_SOURCE_DIR}/include"
-        "${CMAKE_SOURCE_DIR}/vendor"
-        ${ARGON2_INCLUDE_DIRS}
-)
+add_executable(duckpass_unit_tests ${UNIT_TEST_SOURCES})
+target_link_libraries(duckpass_unit_tests PRIVATE duckpass_core GTest::gtest)
+add_test(NAME duckpass_unit_tests COMMAND duckpass_unit_tests)
+add_test(NAME legacy_audit_tests COMMAND audit_tests)
 
-# We need to link against the 'Crypto' component of OpenSSL.
-target_link_libraries(duckpass PRIVATE OpenSSL::Crypto ${ARGON2_LIBRARIES} CURL::libcurl zxcvbn)
-target_link_libraries(audit_tests PRIVATE OpenSSL::Crypto ${ARGON2_LIBRARIES} CURL::libcurl zxcvbn)
-
-# Copy dictionary to build directory
+# Copy dictionary to build directory and test working directory
 configure_file(vendor/zxcvbn-c/zxcvbn.dict zxcvbn.dict COPYONLY)
 
 # A small message after a successful build

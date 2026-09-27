@@ -12,3 +12,4 @@ task
 reports
 !README.md
 *.sh
+CMakePresets.json

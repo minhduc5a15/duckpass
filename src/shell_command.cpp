@@ -8,7 +8,9 @@
 #include "duckpass/audit_engine.h"
 #include "duckpass/clipboard_handler.h"
 #include "duckpass/config_handler.h"
+#include "duckpass/crypto.h"
 #include "duckpass/terminal_utils.h"
+#include "duckpass/totp.h"
 #include "duckpass/utils.h"
 #include "duckpass/vault_service.h"
 
@@ -67,7 +69,7 @@ namespace duckpass::shell {
         };
 
         // Initialize supported shell commands
-        const char* base_cmds[] = {"add", "get", "delete", "list", "audit", "exit", "help", "clear"};
+        const char* base_cmds[] = {"add", "get", "delete", "list", "otp", "generate", "edit", "update", "rekey", "audit", "exit", "help", "clear"};
         for (const char* cmd : base_cmds) {
             duckpass::SecureString s_cmd;
             s_cmd.append(cmd);
@@ -101,14 +103,18 @@ namespace duckpass::shell {
                 std::cout << "\033[H\033[J" << std::flush;  // ANSI Escape Sequence to clear screen
             } else if (input_view == "help") {
                 std::cout << "Available commands:\n"
-                          << "  list [query]     List all services or fuzzy search\n"
-                          << "  get <service>    Copy password for a service to clipboard\n"
-                          << "  get --show <svc> Show password in terminal\n"
-                          << "  delete <service> Delete a service entry\n"
-                          << "  add              Add a new entry interactively\n"
-                          << "  audit [--online] Perform a security audit of your vault\n"
-                          << "  clear            Clear screen\n"
-                          << "  exit             Exit interactive shell\n";
+                          << "  list [query]       List all services or fuzzy search\n"
+                          << "  get <service>      Copy password for a service to clipboard\n"
+                          << "  get --show <svc>   Show password in terminal\n"
+                          << "  otp <service>      Display and copy current 2FA TOTP code\n"
+                          << "  delete <service>   Delete a service entry\n"
+                          << "  add                Add a new entry interactively\n"
+                          << "  edit <service>     Edit an existing entry interactively\n"
+                          << "  generate [length]  Generate a cryptographically strong password\n"
+                          << "  rekey              Change master password for the vault\n"
+                          << "  audit [--online]   Perform a security audit of your vault\n"
+                          << "  clear              Clear screen\n"
+                          << "  exit               Exit interactive shell\n";
             } else if (input_view == "list" || input_view.starts_with("list ")) {
                 std::string_view query;
                 if (input_view.starts_with("list ")) {
@@ -235,15 +241,125 @@ namespace duckpass::shell {
                     break;
                 }
 
+                // 4. Optional 2FA Secret
+                duckpass::SecureString s_totp =
+                    duckpass::terminal::read_line_interactive("2FA Secret (Base32, optional - press ENTER to skip): ", {}, {});
+                trim_secure(s_totp);
+
                 try {
                     std::string const display_name(s_service.begin(), s_service.end());
-                    vault_service->add_entry(std::move(s_service), std::move(s_username), std::move(s_password));
+                    vault_service->add_entry(std::move(s_service), std::move(s_username), std::move(s_password), std::move(s_totp));
 
                     std::cout << "\033[32mSuccessfully added entry for " << display_name << "!\033[0m" << std::endl;
 
                     refresh_services();
                 } catch (const std::exception& e) {
                     std::cerr << "\033[31mError adding entry: " << e.what() << "\033[0m" << std::endl;
+                }
+            } else if (input_view.starts_with("otp ")) {
+                std::string_view service = input_view.substr(4);
+                while (!service.empty() && std::isspace(service.front())) service.remove_prefix(1);
+                duckpass::SecureString s_name(service.data(), service.size());
+                try {
+                    uint32_t remaining = 0;
+                    std::string code = vault_service->get_totp_code(s_name, &remaining);
+                    std::cout << "2FA Code for '" << service << "': \033[1;32m" << code << "\033[0m" << " (expires in " << remaining << "s)\n";
+                    duckpass::SecureString code_sec(code.c_str());
+                    if (clipboard_handler::set_text(code_sec)) {
+                        std::cout << "[✓] 2FA code copied to clipboard (clearing in 15s).\n";
+                        clipboard_handler::clear_after_delay(std::chrono::seconds(15));
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "\033[31mError: " << e.what() << "\033[0m\n";
+                }
+            } else if (input_view == "generate" || input_view.starts_with("generate ")) {
+                int length = 16;
+                if (input_view.starts_with("generate ")) {
+                    std::string_view arg = input_view.substr(9);
+                    while (!arg.empty() && std::isspace(arg.front())) arg.remove_prefix(1);
+                    try {
+                        length = std::stoi(std::string(arg));
+                    } catch (...) {
+                        std::cerr << "\033[31mInvalid length. Defaulting to 16.\033[0m\n";
+                        length = 16;
+                    }
+                }
+                try {
+                    auto pwd = crypto_handler::generate_password(length);
+                    std::cout << "Generated Password: \033[1;36m";
+                    std::cout.write(pwd.data(), pwd.size());
+                    std::cout << "\033[0m\n";
+                    if (clipboard_handler::set_text(pwd)) {
+                        std::cout << "[✓] Password copied to clipboard (clearing in 30s).\n";
+                        clipboard_handler::clear_after_delay(std::chrono::seconds(30));
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "\033[31mError: " << e.what() << "\033[0m\n";
+                }
+            } else if (input_view.starts_with("edit ") || input_view.starts_with("update ")) {
+                size_t prefix_len = input_view.starts_with("edit ") ? 5 : 7;
+                std::string_view service = input_view.substr(prefix_len);
+                while (!service.empty() && std::isspace(service.front())) service.remove_prefix(1);
+                duckpass::SecureString s_service(service.data(), service.size());
+                auto entry_opt = vault_service->get_entry(s_service);
+                if (!entry_opt) {
+                    std::cout << "\033[31mService not found.\033[0m\n";
+                } else {
+                    auto trim_sec = [](duckpass::SecureString& s) {
+                        s.erase(s.begin(), std::ranges::find_if(s, [](const unsigned char ch) { return !std::isspace(ch); }));
+                        s.erase(std::ranges::find_if(s.rbegin(), s.rend(), [](const unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
+                    };
+                    std::cout << "Editing '" << service << "'. (Press ENTER to keep current value)\n";
+                    duckpass::SecureString current_user = entry_opt->username.unprotect();
+                    std::cout << "Current username: " << current_user << "\n";
+                    duckpass::SecureString new_user = duckpass::terminal::read_line_interactive("New username: ", {}, {});
+                    trim_sec(new_user);
+
+                    std::cout << "Enter new password (or leave empty to keep current, or 'g' to auto-generate):\n";
+                    duckpass::SecureString new_pass = utils::get_password_silent("New password: ");
+
+                    duckpass::SecureString current_totp = entry_opt->totp_secret.unprotect();
+                    if (!current_totp.empty()) {
+                        std::cout << "Current 2FA secret is configured.\n";
+                    }
+                    duckpass::SecureString new_totp = duckpass::terminal::read_line_interactive("New 2FA Secret (Base32, optional): ", {}, {});
+                    trim_sec(new_totp);
+
+                    std::optional<duckpass::SecureString> opt_user = new_user.empty() ? std::nullopt : std::make_optional(new_user);
+                    std::optional<duckpass::SecureString> opt_pass;
+                    if (!new_pass.empty()) {
+                        if (std::string_view(new_pass.data(), new_pass.size()) == "g") {
+                            auto gen_pw = crypto_handler::generate_password(20);
+                            std::cout << "[✓] Auto-generated secure password: " << gen_pw << "\n";
+                            opt_pass = std::move(gen_pw);
+                        } else {
+                            opt_pass = std::move(new_pass);
+                        }
+                    }
+                    std::optional<duckpass::SecureString> opt_totp = new_totp.empty() ? std::nullopt : std::make_optional(new_totp);
+
+                    try {
+                        vault_service->update_entry(s_service, opt_user, opt_pass, opt_totp);
+                        std::cout << "\033[32mSuccessfully updated entry for " << service << "!\033[0m\n";
+                    } catch (const std::exception& e) {
+                        std::cerr << "\033[31mError updating entry: " << e.what() << "\033[0m\n";
+                    }
+                }
+            } else if (input_view == "rekey") {
+                duckpass::SecureString curr_pwd = utils::get_password_silent("Enter CURRENT Master Password: ");
+                duckpass::SecureString new_pwd1 = utils::get_password_silent("Enter NEW Master Password: ");
+                duckpass::SecureString new_pwd2 = utils::get_password_silent("Re-enter NEW Master Password: ");
+                if (new_pwd1 != new_pwd2) {
+                    std::cerr << "\033[31mError: Passwords do not match. Rekey cancelled.\033[0m\n";
+                } else if (new_pwd1.empty()) {
+                    std::cerr << "\033[31mError: New master password cannot be empty.\033[0m\n";
+                } else {
+                    try {
+                        vault_service->rekey(new_pwd1);
+                        std::cout << "\033[32m[✓] Master password changed and vault re-encrypted successfully!\033[0m\n";
+                    } catch (const std::exception& e) {
+                        std::cerr << "\033[31mError rekeying vault: " << e.what() << "\033[0m\n";
+                    }
                 }
             } else if (input_view == "audit" || input_view.starts_with("audit ")) {
                 audit::AuditEngine::Config config;

@@ -33,6 +33,9 @@ namespace duckpass {
         // However, we can initialize it lazily on first use.
         static void initialize_session_key();
 
+        // Cleanses the session key from secure memory on application shutdown.
+        static void cleanse_session_key();
+
     private:
         std::vector<unsigned char> iv_;
         std::vector<unsigned char> ciphertext_;

@@ -4,6 +4,7 @@
 
 #include <ctime>
 #include <filesystem>
+#include <future>
 #include <iomanip>
 #include <iostream>
 #include <ranges>
@@ -32,7 +33,7 @@ namespace audit {
         std::unordered_map<duckpass::SecureString, std::vector<size_t>> hash_to_indices;
 
         for (size_t i = 0; i < entries.size(); ++i) {
-            const auto& [service, username, password, last_updated] = entries[i];
+            const auto& [service, username, password, totp_secret, last_updated] = entries[i];
             duckpass::SecureString s = service.unprotect();
             duckpass::SecureString u = username.unprotect();
             duckpass::SecureString p = password.unprotect();
@@ -107,20 +108,41 @@ namespace audit {
     }
 
     ScopedZxcvbn::ScopedZxcvbn() {
-        std::string dict_path = "zxcvbn.dict";
+        std::vector<std::filesystem::path> candidates;
+
+        if (const char* env_path = std::getenv("DUCKPASS_DICT_PATH")) {
+            candidates.emplace_back(env_path);
+        }
+
         char exe_path[PATH_MAX];
         const ssize_t count = readlink("/proc/self/exe", exe_path, PATH_MAX);
         if (count != -1) {
-            std::filesystem::path const p(std::string(exe_path, count));
-            dict_path = (p.parent_path() / "zxcvbn.dict").string();
+            const std::filesystem::path bin_dir = std::filesystem::path(std::string(exe_path, count)).parent_path();
+            candidates.push_back(bin_dir / "zxcvbn.dict");
+            candidates.push_back(bin_dir / "vendor" / "zxcvbn-c" / "zxcvbn.dict");
+            candidates.push_back(bin_dir / ".." / "vendor" / "zxcvbn-c" / "zxcvbn.dict");
         }
 
-        if (!ZxcvbnInit(dict_path.c_str())) {
-            std::cerr << "Error: Failed to load zxcvbn dictionary at: " << dict_path << "\n";
-            std::cerr << "Please ensure 'zxcvbn.dict' is located in the same directory as the duckpass executable.\n";
-            throw std::runtime_error("Failed to initialize zxcvbn");
+        candidates.emplace_back("zxcvbn.dict");
+        candidates.emplace_back("vendor/zxcvbn-c/zxcvbn.dict");
+        candidates.emplace_back("../vendor/zxcvbn-c/zxcvbn.dict");
+
+        for (const auto& path : candidates) {
+            std::error_code ec;
+            if (std::filesystem::exists(path, ec)) {
+                if (ZxcvbnInit(path.string().c_str())) {
+                    initialized = true;
+                    return;
+                }
+            }
         }
-        initialized = true;
+
+        std::cerr << "Warning: Could not locate or initialize 'zxcvbn.dict'.\n"
+                  << "Checked paths:\n";
+        for (const auto& path : candidates) {
+            std::cerr << "  - " << path.string() << "\n";
+        }
+        std::cerr << "Falling back to uninitialized zxcvbn with default rules.\n";
     }
 
     ScopedZxcvbn::~ScopedZxcvbn() {
