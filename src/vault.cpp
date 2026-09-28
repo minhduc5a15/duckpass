@@ -298,27 +298,8 @@ namespace vault_handler {
         duckpass::SecureBytes full_package = std::move(header);
         full_package.insert(full_package.end(), ciphertext.begin(), ciphertext.end());
 
-        // =================================================================
-        // AUTOMATIC BACKUP: Rename the old vault file to (.bak) before overwriting
-        // =================================================================
-        if (std::filesystem::exists(vault_path)) {
-            std::filesystem::path backup_path = vault_path;
-            backup_path.replace_extension(vault_path.extension().string() + ".bak");
-            std::error_code ec;
-
-            // Vulnerability 2.2 Fix: Prevent Symlink Attack (CWE-59).
-            // Use atomic rename instead of checking exists() and then copying.
-            // rename() safely overwrites the target (even if it's a symlink) without following it.
-            std::filesystem::rename(vault_path, backup_path, ec);
-
-            // If backup fails (e.g., permission error), warn but don't block main write (Fail-safe)
-            if (ec) {
-                std::cerr << "[Warning] Could not create backup (.bak): " << ec.message() << "\n";
-            }
-        }
-        // =================================================================
-
-        // 4. Delegate disk I/O to storage layer
-        duckpass::storage::write_file_atomic(vault_path, full_package);
+        // 4. Delegate disk I/O and atomic backup to storage layer.
+        // write_file_atomic ensures the new data is fully synced before any backup/replacement occurs.
+        duckpass::storage::write_file_atomic(vault_path, full_package, true);
     }
 }  // namespace vault_handler

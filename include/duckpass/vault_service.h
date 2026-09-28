@@ -82,6 +82,7 @@ namespace duckpass::service {
         std::filesystem::path vault_path_;
         duckpass::ProtectedString master_password_;
         vault_handler::Vault vault_;
+        mutable std::vector<duckpass::SecureString> deleted_services_;
     };
 
 }  // namespace duckpass::service

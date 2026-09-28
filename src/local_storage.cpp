@@ -1,11 +1,15 @@
 #include "duckpass/local_storage.h"
 
 #include <fcntl.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <atomic>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
+#include <iostream>
 #include <system_error>
 
 #include "duckpass/exceptions.h"
@@ -101,61 +105,85 @@ namespace duckpass::storage {
         return buffer;
     }
 
-    void write_file_atomic(const std::filesystem::path& path, const std::span<const uint8_t> data) {
-        // Atomic write pattern: Write to a temp file, then rename to target.
-        // Create a temporary path for atomic write. We use a predictable
-        // ".tmp" suffix on the same directory so that rename() remains
-        // atomic on the same filesystem.
-        std::filesystem::path tmp_path = path;
-        tmp_path.replace_extension(path.extension().string() + ".tmp");
+    FileLockGuard::~FileLockGuard() { release(); }
 
-        // Vulnerability 2.1 Fix: Use O_EXCL to prevent Symlink attacks (CWE-377/59).
-        // If the .tmp file exists (e.g., from a crash), we must remove it first,
-        // but we MUST ensure we don't follow a symlink to delete a system file.
-        std::error_code ec;
-        if (std::filesystem::exists(tmp_path, ec) || std::filesystem::is_symlink(tmp_path, ec)) {
-            std::filesystem::remove(tmp_path, ec);
+    FileLockGuard& FileLockGuard::operator=(FileLockGuard&& other) noexcept {
+        if (this != &other) {
+            if (fd_ != -1) release();
+            fd_ = other.fd_;
+            other.fd_ = -1;
         }
+        return *this;
+    }
 
-        // Use O_CREAT | O_EXCL to ensure we never follow an existing symlink
-        // when creating the temporary file (mitigates TOCTOU/symlink attacks).
-        // Create with restrictive permissions (owner read/write only) to
-        // avoid leaking file contents to other users.
+    void FileLockGuard::release() {
+        if (fd_ != -1) {
+            flock(fd_, LOCK_UN);
+            close(fd_);
+            fd_ = -1;
+        }
+    }
+
+    FileLockGuard acquire_file_lock(const std::filesystem::path& path) {
+        std::filesystem::path const lock_path = path.string() + ".lock";
+        int const lock_fd = open(lock_path.c_str(), O_RDWR | O_CREAT, 0600);
+        if (lock_fd != -1) {
+            flock(lock_fd, LOCK_EX);
+        }
+        return FileLockGuard(lock_fd);
+    }
+
+    void write_file_atomic(const std::filesystem::path& path, const std::span<const uint8_t> data, const bool create_backup) {
+        // 1. Generate a truly collision-free unique temporary path in the target directory
+        static std::atomic<uint64_t> s_temp_counter{0};
+        const auto now_ns = std::chrono::steady_clock::now().time_since_epoch().count();
+        const std::string unique_tmp_name =
+            path.filename().string() + ".tmp." + std::to_string(getpid()) + "." + std::to_string(now_ns) + "." + std::to_string(++s_temp_counter);
+        std::filesystem::path parent_dir = path.parent_path();
+        if (parent_dir.empty()) parent_dir = ".";
+        std::filesystem::path const tmp_path = parent_dir / unique_tmp_name;
+
+        // Use O_CREAT | O_EXCL to ensure atomic unique creation without symlink vulnerabilities
         int const fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
         if (fd == -1) {
-            throw vault_io_error(std::string("Failed to create temporary file (possible symlink attack or permission issue): ") + tmp_path.string() +
-                                 " (" + std::strerror(errno) + ")");
+            throw vault_io_error(std::string("Failed to create temporary file: ") + tmp_path.string() + " (" + std::strerror(errno) + ")");
         }
 
         try {
             write_all(fd, data.data(), data.size());
-            // Force physical write to the storage medium.
+            // Force physical write to the storage medium
             if (fsync(fd) == -1) throw vault_io_error(std::string("Failed to sync file to disk: ") + std::strerror(errno));
         } catch (...) {
             close(fd);
-            std::filesystem::remove(tmp_path);
+            std::error_code ec;
+            std::filesystem::remove(tmp_path, ec);
             throw;
         }
 
         close(fd);
 
-        // Rename is atomic on POSIX-compliant file systems. If rename fails
-        // remove the temp file and report an error to avoid leaving stale
-        // temporary files behind.
+        // 2. Safe Backup: Only create/update backup AFTER the new data is fully synced to disk.
+        // The original file is preserved completely in case of any prior write failure.
+        if (create_backup && std::filesystem::exists(path)) {
+            std::filesystem::path backup_path = path;
+            backup_path.replace_extension(path.extension().string() + ".bak");
+            std::error_code ec;
+            std::filesystem::copy_file(path, backup_path, std::filesystem::copy_options::overwrite_existing, ec);
+            if (ec) {
+                std::cerr << "[Warning] Could not create backup (.bak): " << ec.message() << "\n";
+            }
+        }
+
+        // 3. Atomically rename the verified temporary file over the target path
+        std::error_code ec;
         std::filesystem::rename(tmp_path, path, ec);
         if (ec) {
             std::filesystem::remove(tmp_path);
             throw vault_io_error("Failed to atomically rename vault file: " + ec.message());
         }
 
-        // IMPORTANT: On many file systems, the parent directory metadata must be synced
-        // to ensure the rename entry itself is persisted to disk and survives a crash.
-        std::filesystem::path parent_dir = path.parent_path();
-        if (parent_dir.empty()) parent_dir = ".";
+        // 4. Directory metadata sync to guarantee entry persistence
         int const dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY);
-        // Sync the parent directory to ensure the rename is persisted. If
-        // open() for the directory fails we can't do anything useful; this
-        // is a best-effort sync to improve durability.
         if (dir_fd != -1) {
             fsync(dir_fd);
             close(dir_fd);

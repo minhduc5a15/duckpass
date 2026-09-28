@@ -64,4 +64,33 @@ TEST_F(StorageTest, FileCreatedWithRestrictivePermissions) {
     EXPECT_FALSE(st.st_mode & S_IROTH);
     EXPECT_FALSE(st.st_mode & S_IWOTH);
 }
+
+TEST_F(StorageTest, AtomicWriteWithBackupPreservesCanonicalAndCreatesBackup) {
+    std::vector<uint8_t> data1 = {'I', 'N', 'I', 'T', 'I', 'A', 'L'};
+    duckpass::storage::write_file_atomic(test_file, data1, false);
+    EXPECT_TRUE(std::filesystem::exists(test_file));
+
+    std::vector<uint8_t> data2 = {'U', 'P', 'D', 'A', 'T', 'E', 'D'};
+    duckpass::storage::write_file_atomic(test_file, data2, true);
+
+    EXPECT_TRUE(std::filesystem::exists(test_file));
+    std::filesystem::path backup_file = test_file;
+    backup_file += ".bak";
+    EXPECT_TRUE(std::filesystem::exists(backup_file));
+
+    auto read_back = duckpass::storage::read_file(test_file);
+    EXPECT_EQ(data2, std::vector<uint8_t>(read_back.begin(), read_back.end()));
+
+    auto read_bak = duckpass::storage::read_file(backup_file);
+    EXPECT_EQ(data1, std::vector<uint8_t>(read_bak.begin(), read_bak.end()));
+}
+
+TEST_F(StorageTest, FileLockGuardAcquiresAndReleasesCleanly) {
+    {
+        auto lock = duckpass::storage::acquire_file_lock(test_file);
+        EXPECT_TRUE(std::filesystem::exists(test_file.string() + ".lock"));
+    }
+    // Lock released on destruction
+    { auto lock2 = duckpass::storage::acquire_file_lock(test_file); }
+}
 #endif

@@ -4,6 +4,7 @@
 #include <ctime>
 #include <stdexcept>
 
+#include "duckpass/local_storage.h"
 #include "duckpass/totp.h"
 #include "duckpass/utils.h"
 
@@ -14,7 +15,28 @@ namespace duckpass::service {
         vault_ = vault_handler::load_vault(vault_path_, master_password);
     }
 
-    void VaultService::save() const { vault_handler::save_vault(vault_path_, vault_, master_password_.unprotect()); }
+    void VaultService::save() const {
+        auto lock = duckpass::storage::acquire_file_lock(vault_path_);
+        if (std::filesystem::exists(vault_path_)) {
+            try {
+                auto disk_vault = vault_handler::load_vault(vault_path_, master_password_.unprotect());
+                for (const auto& disk_entry : disk_vault.get_all_entries()) {
+                    auto svc = disk_entry.service.unprotect();
+                    if (std::find(deleted_services_.begin(), deleted_services_.end(), svc) != deleted_services_.end()) {
+                        continue;
+                    }
+                    auto local_entry = vault_.get_entry(svc);
+                    if (!local_entry) {
+                        const_cast<vault_handler::Vault&>(vault_).add_entry(disk_entry);
+                    }
+                }
+            } catch (...) {
+                // If disk load fails (e.g., initial creation or different password), save local state directly
+            }
+        }
+        deleted_services_.clear();
+        vault_handler::save_vault(vault_path_, vault_, master_password_.unprotect());
+    }
 
     void VaultService::rekey(duckpass::SecureString new_master_password) {
         if (new_master_password.empty()) {
@@ -97,6 +119,7 @@ namespace duckpass::service {
 
     void VaultService::delete_entry(const duckpass::SecureString& service) {
         if (vault_.remove_entry(service)) {
+            deleted_services_.push_back(service);
             save();
         } else {
             throw std::invalid_argument("Service not found.");
