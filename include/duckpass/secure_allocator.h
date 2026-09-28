@@ -209,7 +209,8 @@ namespace duckpass {
         }
 
         void erase(const char* first, char* last) {
-            if (first < m_buffer.data() || last > m_buffer.data() + m_buffer.size()) return;
+            if (!first || !last || first >= last) return;
+            if (first < m_buffer.data() || last > m_buffer.data() + size()) return;
             m_buffer.erase(m_buffer.begin() + (first - m_buffer.data()), m_buffer.begin() + (last - m_buffer.data()));
             if (m_buffer.empty() || m_buffer.back() != '\0') {
                 m_buffer.push_back('\0');
