@@ -89,28 +89,7 @@ void export_command::setup(CLI::App &app) {
         if (*format == "csv") {
             write_csv(output_file, vault);
         } else if (*format == "json") {
-            output_file << "[\n";
-            const auto &entries = vault.get_all_entries();
-            for (size_t i = 0; i < entries.size(); ++i) {
-                const auto &entry = entries[i];
-                output_file << "  {\n";
-                duckpass::SecureString s = entry.service.unprotect();
-                duckpass::SecureString u = entry.username.unprotect();
-                duckpass::SecureString p = entry.password.unprotect();
-                output_file << R"(    "service": ")";
-                output_file.write(s.data(), s.size());
-                output_file << "\",\n";
-                output_file << R"(    "username": ")";
-                output_file.write(u.data(), u.size());
-                output_file << "\",\n";
-                output_file << R"(    "password": ")";
-                output_file.write(p.data(), p.size());
-                output_file << "\"\n";
-                output_file << "  }";
-                if (i < entries.size() - 1) output_file << ",";
-                output_file << "\n";
-            }
-            output_file << "]";
+            write_json(output_file, vault);
         } else {
             std::cerr << "Error: Invalid format '" << *format << "'. Please use 'csv' or 'json'." << std::endl;
             output_file.close();
@@ -133,6 +112,12 @@ void export_command::setup(CLI::App &app) {
 
 void export_command::write_csv_field(std::ostream &os, const duckpass::SecureString &field) {
     os << "\"";
+    if (!field.empty()) {
+        char const first = field[0];
+        if (first == '=' || first == '+' || first == '-' || first == '@' || first == '\t' || first == '\r') {
+            os << '\'';
+        }
+    }
     for (char const c : field) {
         if (c == '\"') {
             os << "\"\"";
@@ -144,7 +129,7 @@ void export_command::write_csv_field(std::ostream &os, const duckpass::SecureStr
 }
 
 void export_command::write_csv(std::ostream &os, const vault_handler::Vault &vault) {
-    os << "service,username,password\n";
+    os << "service,username,password,totp_secret\n";
 
     for (const auto &entry : vault.get_all_entries()) {
         write_csv_field(os, entry.service.unprotect());
@@ -152,6 +137,74 @@ void export_command::write_csv(std::ostream &os, const vault_handler::Vault &vau
         write_csv_field(os, entry.username.unprotect());
         os << ",";
         write_csv_field(os, entry.password.unprotect());
+        os << ",";
+        write_csv_field(os, entry.totp_secret.unprotect());
         os << "\n";
     }
+}
+
+void export_command::write_json_string(std::ostream &os, const duckpass::SecureString &str) {
+    os << "\"";
+    for (char const c : str) {
+        switch (c) {
+            case '\"':
+                os << "\\\"";
+                break;
+            case '\\':
+                os << "\\\\";
+                break;
+            case '\b':
+                os << "\\b";
+                break;
+            case '\f':
+                os << "\\f";
+                break;
+            case '\n':
+                os << "\\n";
+                break;
+            case '\r':
+                os << "\\r";
+                break;
+            case '\t':
+                os << "\\t";
+                break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
+                    os << buf;
+                } else {
+                    os << c;
+                }
+                break;
+        }
+    }
+    os << "\"";
+}
+
+void export_command::write_json(std::ostream &os, const vault_handler::Vault &vault) {
+    os << "[\n";
+    const auto &entries = vault.get_all_entries();
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const auto &entry = entries[i];
+        os << "  {\n";
+        os << "    \"service\": ";
+        write_json_string(os, entry.service.unprotect());
+        os << ",\n";
+        os << "    \"username\": ";
+        write_json_string(os, entry.username.unprotect());
+        os << ",\n";
+        os << "    \"password\": ";
+        write_json_string(os, entry.password.unprotect());
+        os << ",\n";
+        os << "    \"totp_secret\": ";
+        write_json_string(os, entry.totp_secret.unprotect());
+        os << "\n";
+        os << "  }";
+        if (i < entries.size() - 1) {
+            os << ",";
+        }
+        os << "\n";
+    }
+    os << "]";
 }

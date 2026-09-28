@@ -146,3 +146,41 @@ TEST_F(VaultServiceTest, UpdateEntryModifiesFields) {
         { service.update_entry(duckpass::SecureString("non_existent"), duckpass::SecureString("u"), std::nullopt, std::nullopt); },
         std::invalid_argument);
 }
+
+#define private public
+#include "duckpass/export_command.h"
+#undef private
+
+TEST_F(VaultServiceTest, ExportCsvShieldsFormulasAndPreservesTotp) {
+    vault_handler::Vault vault;
+    vault_handler::VaultEntry entry;
+    entry.service = duckpass::ProtectedString("=calc");
+    entry.username = duckpass::ProtectedString("admin");
+    entry.password = duckpass::ProtectedString("pass");
+    entry.totp_secret = duckpass::ProtectedString("JBSWY3DPEHPK3PXP");
+    vault.add_entry(entry);
+
+    std::stringstream ss;
+    export_command::write_csv(ss, vault);
+    std::string csv = ss.str();
+
+    EXPECT_NE(csv.find("\"'=calc\""), std::string::npos);
+    EXPECT_NE(csv.find("JBSWY3DPEHPK3PXP"), std::string::npos);
+}
+
+TEST_F(VaultServiceTest, ExportJsonEscapesQuotesAndPreservesTotp) {
+    vault_handler::Vault vault;
+    vault_handler::VaultEntry entry;
+    entry.service = duckpass::ProtectedString("bank");
+    entry.username = duckpass::ProtectedString("admin");
+    entry.password = duckpass::ProtectedString("p@ss\"word\nnext");
+    entry.totp_secret = duckpass::ProtectedString("JBSWY3DPEHPK3PXP");
+    vault.add_entry(entry);
+
+    std::stringstream ss;
+    export_command::write_json(ss, vault);
+    std::string json = ss.str();
+
+    EXPECT_NE(json.find(R"("p@ss\"word\nnext")"), std::string::npos);
+    EXPECT_NE(json.find("JBSWY3DPEHPK3PXP"), std::string::npos);
+}
