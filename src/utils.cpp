@@ -1,41 +1,17 @@
 #include "duckpass/utils.h"
 
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <cctype>
 #include <iostream>
 
-// For get_password_silent on Linux/macOS
-#include <termios.h>
-#include <unistd.h>
+#include "duckpass/terminal_utils.h"
 
 namespace utils {
 
-    duckpass::SecureString get_password_silent(const std::string& prompt) {
-        std::cout << prompt << std::flush;
-        termios old_term{};
-        tcgetattr(STDIN_FILENO, &old_term);
-        termios new_term = old_term;
-        new_term.c_lflag &= ~ECHO;  // Turn off terminal echo
-        tcsetattr(STDIN_FILENO, TCSANOW, &new_term);
-
-        duckpass::SecureString password;
-        char c;
-        // Read byte-by-byte from stdin
-        while (read(STDIN_FILENO, &c, 1) == 1 && c != '\n' && c != '\r') {
-            if (c == '\b' || c == 127) {  // Handle Backspace (ASCII 127 is DEL/Backspace on Unix)
-                if (!password.empty()) {
-                    password.pop_back();
-                }
-            } else {
-                password.push_back(c);  // Uses secure_allocator
-            }
-        }
-
-        tcsetattr(STDIN_FILENO, TCSANOW, &old_term);  // Restore terminal settings
-        std::cout << std::endl;
-
-        return password;
-    }
+    duckpass::SecureString get_password_silent(const std::string& prompt) { return duckpass::terminal::read_password(prompt); }
 
     std::filesystem::path get_config_directory() {
         std::filesystem::path config_path;
@@ -55,9 +31,12 @@ namespace utils {
         config_path = std::filesystem::path(home) / ".duckpass";
 #endif
 
-        // Create the directory if it doesn't exist
+        // Create the directory if it doesn't exist with secure permissions (0700)
         if (!std::filesystem::exists(config_path)) {
             std::filesystem::create_directories(config_path);
+#if defined(__linux__) || defined(__APPLE__)
+            chmod(config_path.c_str(), 0700);
+#endif
         }
         return config_path;
     }

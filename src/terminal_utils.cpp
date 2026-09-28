@@ -181,13 +181,70 @@ namespace duckpass::terminal {
         return buffer;
     }
 
+    namespace {
+        class EchoOffGuard {
+        public:
+            EchoOffGuard() {
+                if (!isatty(STDIN_FILENO)) {
+                    return;
+                }
+                if (tcgetattr(STDIN_FILENO, &saved_termios_) == 0) {
+                    active_ = true;
+                    termios new_term = saved_termios_;
+                    new_term.c_lflag &= ~ECHO;
+                    tcsetattr(STDIN_FILENO, TCSANOW, &new_term);
+
+                    struct sigaction sa {};
+                    sa.sa_handler = handle_signal;
+                    sigemptyset(&sa.sa_mask);
+                    sa.sa_flags = 0;
+
+                    sigaction(SIGINT, &sa, &old_sa_int_);
+                    sigaction(SIGTERM, &sa, &old_sa_term_);
+                }
+            }
+
+            ~EchoOffGuard() { restore(); }
+
+            static void restore() {
+                if (active_ && isatty(STDIN_FILENO)) {
+                    tcsetattr(STDIN_FILENO, TCSANOW, &saved_termios_);
+                    active_ = false;
+                    sigaction(SIGINT, &old_sa_int_, nullptr);
+                    sigaction(SIGTERM, &old_sa_term_, nullptr);
+                }
+            }
+
+        private:
+            static void handle_signal(int sig) {
+                restore();
+                struct sigaction dfl {};
+                dfl.sa_handler = SIG_DFL;
+                sigemptyset(&dfl.sa_mask);
+                sigaction(sig, &dfl, nullptr);
+                raise(sig);
+            }
+
+            inline static termios saved_termios_{};
+            inline static struct sigaction old_sa_int_ {};
+            inline static struct sigaction old_sa_term_ {};
+            inline static bool active_ = false;
+        };
+    }  // namespace
+
     SecureString read_password(const std::string& prompt) {
         std::cout << prompt << std::flush;
-        termios old_term{};
-        tcgetattr(STDIN_FILENO, &old_term);
-        termios new_term = old_term;
-        new_term.c_lflag &= ~ECHO;  // Turn off terminal echo
-        tcsetattr(STDIN_FILENO, TCSANOW, &new_term);
+
+        if (!isatty(STDIN_FILENO)) {
+            SecureString buffer;
+            char c;
+            while (std::cin.get(c) && c != '\n' && c != '\r') {
+                buffer.push_back(c);
+            }
+            return buffer;
+        }
+
+        EchoOffGuard const guard;
 
         SecureString secure_password;
         char c;
@@ -202,9 +259,7 @@ namespace duckpass::terminal {
             }
         }
 
-        tcsetattr(STDIN_FILENO, TCSANOW, &old_term);  // Restore terminal settings
         std::cout << std::endl;
-
         return secure_password;
     }
 
