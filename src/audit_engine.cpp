@@ -25,7 +25,7 @@ namespace audit {
 
         // Semaphore to limit concurrent network requests (Batching)
         // Only 8 threads can acquire the semaphore at the same time.
-        static std::counting_semaphore<8> network_sem(8);
+        auto network_sem = std::make_shared<std::counting_semaphore<8>>(8);
 
         std::vector<std::future<HibpResult>> hibp_futures;
 
@@ -61,17 +61,24 @@ namespace audit {
                 const duckpass::SecureString sha1 = crypto_handler::compute_sha1(p);
 
                 // BATCHING: Acquire slot BEFORE spawning thread to prevent thread explosion
-                network_sem.acquire();
-                hibp_futures.push_back(std::async(std::launch::async, [sha1]() {
-                    try {
-                        auto res = HibpChecker::check_password(sha1);
-                        network_sem.release();
-                        return res;
-                    } catch (...) {
-                        network_sem.release();  // Ensure release on error to prevent deadlock
-                        throw;
-                    }
-                }));
+                network_sem->acquire();
+                try {
+                    hibp_futures.push_back(std::async(std::launch::async, [sha1, network_sem]() {
+                        struct PermitGuard {
+                            std::shared_ptr<std::counting_semaphore<8>> sem;
+                            ~PermitGuard() {
+                                if (sem) {
+                                    sem->release();
+                                }
+                            }
+                        } guard{network_sem};
+
+                        return HibpChecker::check_password(sha1);
+                    }));
+                } catch (...) {
+                    network_sem->release();
+                    throw;
+                }
             } else {
                 result.hibp = {false, 0, "Online check disabled"};
             }
@@ -97,9 +104,15 @@ namespace audit {
         // 6. Finalize HIBP
         if (config.check_online) {
             for (size_t i = 0; i < hibp_futures.size(); ++i) {
-                report.entries[i].hibp = hibp_futures[i].get();
-                if (report.entries[i].hibp.is_pwned) {
-                    report.pwned_passwords++;
+                try {
+                    report.entries[i].hibp = hibp_futures[i].get();
+                    if (report.entries[i].hibp.is_pwned) {
+                        report.pwned_passwords++;
+                    }
+                } catch (const std::exception& e) {
+                    report.entries[i].hibp = {false, 0, std::string("HIBP check error: ") + e.what()};
+                } catch (...) {
+                    report.entries[i].hibp = {false, 0, "HIBP check error: unknown exception"};
                 }
             }
         }
