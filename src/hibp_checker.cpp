@@ -1,6 +1,7 @@
 #include "duckpass/hibp_checker.h"
 
 #include <curl/curl.h>
+#include <openssl/crypto.h>
 
 #include <chrono>
 #include <string_view>
@@ -38,6 +39,14 @@ namespace audit {
 
         while (retry_count <= max_retries) {
             std::string response_data;
+            struct ResponseGuard {
+                std::string& s;
+                ~ResponseGuard() {
+                    if (!s.empty()) {
+                        OPENSSL_cleanse(s.data(), s.size());
+                    }
+                }
+            } guard{response_data};
 
             curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
             curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
@@ -110,9 +119,6 @@ namespace audit {
                 }
             }
 
-            const auto resp_p = const_cast<volatile char*>(response_data.data());
-            for (size_t i = 0; i < response_data.size(); ++i) resp_p[i] = 0;
-            response_data.clear();
             break;  // Success or non-retryable error
         }
 

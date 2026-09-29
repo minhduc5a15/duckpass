@@ -3,10 +3,8 @@
 #include <ctime>
 
 #include "duckpass/audit_engine.h"
-#include "duckpass/crypto.h"
 #include "duckpass/entropy_evaluator.h"
 #include "duckpass/vault.h"
-#include "zxcvbn.h"
 
 TEST(AuditTest, EntropyEvaluatorIdentifiesWeakAndStrongPasswords) {
     auto score_weak = audit::EntropyEvaluator::evaluate(duckpass::SecureString("123"));

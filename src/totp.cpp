@@ -5,7 +5,6 @@
 
 #include <ctime>
 #include <stdexcept>
-#include <vector>
 
 namespace duckpass::totp {
 

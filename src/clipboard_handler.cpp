@@ -1,7 +1,6 @@
 #include "duckpass/clipboard_handler.h"
 
 #include <cstdio>
-#include <iostream>
 #include <string>
 
 // --- ADD NEW INCLUDES FOR LINUX/MACOS ---
@@ -9,7 +8,6 @@
 #include <unistd.h>
 
 #include <chrono>
-#include <thread>
 #endif
 
 namespace clipboard_handler {

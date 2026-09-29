@@ -2,7 +2,6 @@
 #include <sys/stat.h>
 
 #include <filesystem>
-#include <fstream>
 
 #include "duckpass/exceptions.h"
 #include "duckpass/local_storage.h"

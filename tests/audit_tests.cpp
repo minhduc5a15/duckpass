@@ -7,7 +7,6 @@
 #include "duckpass/crypto.h"
 #include "duckpass/entropy_evaluator.h"
 #include "duckpass/vault.h"
-#include "zxcvbn.h"
 
 void test_hashing() {
     std::cout << "Running test_hashing..." << std::endl;

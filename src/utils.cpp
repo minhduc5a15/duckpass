@@ -5,7 +5,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <iostream>
 
 #include "duckpass/terminal_utils.h"
 
@@ -31,13 +30,13 @@ namespace utils {
         config_path = std::filesystem::path(home) / ".duckpass";
 #endif
 
-        // Create the directory if it doesn't exist with secure permissions (0700)
+        // Ensure directory exists with secure permissions (0700)
         if (!std::filesystem::exists(config_path)) {
             std::filesystem::create_directories(config_path);
-#if defined(__linux__) || defined(__APPLE__)
-            chmod(config_path.c_str(), 0700);
-#endif
         }
+#if defined(__linux__) || defined(__APPLE__)
+        chmod(config_path.c_str(), 0700);
+#endif
         return config_path;
     }
 

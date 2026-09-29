@@ -78,6 +78,7 @@ void export_command::setup(CLI::App &app) {
         std::ofstream output_file(*output_path);
 #if defined(__linux__) || defined(__APPLE__)
         umask(old_mask);  // Restore mask
+        chmod(output_path->c_str(), 0600);
 #endif
 
         if (!output_file) {

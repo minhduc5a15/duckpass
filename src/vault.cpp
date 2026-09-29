@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cerrno>
 #include <ctime>
-#include <iostream>
 #include <span>
 #include <stdexcept>
 #include <vector>
