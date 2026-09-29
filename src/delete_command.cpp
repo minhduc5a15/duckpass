@@ -5,6 +5,8 @@
 #include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
+#include "duckpass/ipc.h"
+#include "duckpass/terminal_utils.h"
 #include "duckpass/utils.h"
 #include "duckpass/vault_service.h"
 void delete_command::setup(CLI::App& app) {
@@ -20,6 +22,28 @@ void delete_command::setup(CLI::App& app) {
         if (!vault_handler::vault_exists(vault_path)) {
             std::cerr << "Error: Vault has not been initialized.\n"
                       << "Please run 'duckpass init' to create a new storage.\n";
+            return;
+        }
+
+        duckpass::ipc::IpcClient client;
+        if (client.is_agent_available()) {
+            auto status = client.get_status();
+            if (status && !status->is_unlocked) {
+                const duckpass::SecureString master_password = terminal_utils::read_password("Agent is locked. Enter Master Password: ");
+                std::string unlock_err;
+                if (!client.unlock(master_password, unlock_err)) {
+                    std::cerr << "Error: " << unlock_err << std::endl;
+                    return;
+                }
+            }
+
+            duckpass::SecureString const service_name(name->begin(), name->end());
+            std::string err;
+            if (client.delete_entry(service_name, err)) {
+                std::cout << "Success: Entry '" << *name << "' has been deleted." << std::endl;
+            } else {
+                std::cerr << "Error: " << err << std::endl;
+            }
             return;
         }
 

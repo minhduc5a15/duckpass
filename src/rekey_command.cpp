@@ -5,6 +5,7 @@
 #include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
+#include "duckpass/ipc.h"
 #include "duckpass/terminal_utils.h"
 #include "duckpass/vault_service.h"
 
@@ -36,6 +37,12 @@ namespace rekey_command {
 
                 vault_service.rekey(new_pwd1);
                 std::cout << "[✓] Master password changed successfully! Vault has been re-encrypted.\n";
+
+                // Lock agent to purge old master keys and cache from memory
+                duckpass::ipc::IpcClient client;
+                if (client.is_agent_available()) {
+                    client.lock();
+                }
             } catch (const duckpass::wrong_password_error& e) {
                 std::cerr << "Error: " << e.what() << "\n";
             } catch (const std::exception& e) {

@@ -9,6 +9,7 @@
 #include "duckpass/clipboard_handler.h"
 #include "duckpass/config_handler.h"
 #include "duckpass/crypto.h"
+#include "duckpass/ipc.h"
 #include "duckpass/terminal_utils.h"
 #include "duckpass/totp.h"
 #include "duckpass/utils.h"
@@ -65,6 +66,13 @@ namespace duckpass::shell {
             services.clear();
             for (const auto& entry : vault_service->get_all_entries()) {
                 services.push_back(entry.service.unprotect());
+            }
+        };
+
+        const auto sync_agent = []() {
+            duckpass::ipc::IpcClient client;
+            if (client.is_agent_available()) {
+                client.lock();
             }
         };
 
@@ -187,6 +195,7 @@ namespace duckpass::shell {
                     vault_service->delete_entry(duckpass::SecureString(service.data(), service.size()));
                     std::cout << "Entry deleted successfully." << std::endl;
                     refresh_services();  // Update completion candidates
+                    sync_agent();
                 } catch (const std::invalid_argument&) {
                     std::cout << "Service not found." << std::endl;
                 } catch (const std::exception& e) {
@@ -253,6 +262,7 @@ namespace duckpass::shell {
                     std::cout << "\033[32mSuccessfully added entry for " << display_name << "!\033[0m" << std::endl;
 
                     refresh_services();
+                    sync_agent();
                 } catch (const std::exception& e) {
                     std::cerr << "\033[31mError adding entry: " << e.what() << "\033[0m" << std::endl;
                 }
@@ -341,6 +351,7 @@ namespace duckpass::shell {
                     try {
                         vault_service->update_entry(s_service, opt_user, opt_pass, opt_totp);
                         std::cout << "\033[32mSuccessfully updated entry for " << service << "!\033[0m\n";
+                        sync_agent();
                     } catch (const std::exception& e) {
                         std::cerr << "\033[31mError updating entry: " << e.what() << "\033[0m\n";
                     }
@@ -357,6 +368,7 @@ namespace duckpass::shell {
                     try {
                         vault_service->rekey(new_pwd1);
                         std::cout << "\033[32m[✓] Master password changed and vault re-encrypted successfully!\033[0m\n";
+                        sync_agent();
                     } catch (const std::exception& e) {
                         std::cerr << "\033[31mError rekeying vault: " << e.what() << "\033[0m\n";
                     }

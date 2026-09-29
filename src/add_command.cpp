@@ -7,6 +7,7 @@
 #include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
+#include "duckpass/ipc.h"
 #include "duckpass/terminal_utils.h"
 #include "duckpass/utils.h"
 #include "duckpass/vault_service.h"
@@ -30,7 +31,48 @@ void add_command::setup(CLI::App& app) {
             return;
         }
 
-        const duckpass::SecureString master_password = utils::get_password_silent("Enter master password: ");
+        duckpass::ipc::IpcClient client;
+        if (client.is_agent_available()) {
+            auto status = client.get_status();
+            if (status && !status->is_unlocked) {
+                const duckpass::SecureString master_password = terminal_utils::read_password("Agent is locked. Enter Master Password: ");
+                std::string unlock_err;
+                if (!client.unlock(master_password, unlock_err)) {
+                    std::cerr << "Error: " << unlock_err << std::endl;
+                    return;
+                }
+            }
+
+            duckpass::SecureString password;
+            if (isatty(STDIN_FILENO)) {
+                const duckpass::SecureString p1 = terminal_utils::read_password("Enter password for '" + *name + "': ");
+                const duckpass::SecureString p2 = terminal_utils::read_password("Retype password for '" + *name + "': ");
+
+                if (p1 != p2) {
+                    std::cerr << "Error: Passwords do not match. Entry not added." << std::endl;
+                    return;
+                }
+                password = p1;
+            } else {
+                // Read from STDIN if not a TTY (for piping)
+                char c;
+                while (std::cin.get(c) && c != '\n' && c != '\r') {
+                    password.push_back(c);
+                }
+            }
+
+            duckpass::ipc::EntryData entry;
+            entry.service.assign(name->data(), name->size());
+            entry.username.assign(username->data(), username->size());
+            entry.password = std::move(password);
+            std::string err;
+            if (client.add_entry(entry, err)) {
+                std::cout << "Success: Entry '" << *name << "' added." << std::endl;
+            } else {
+                std::cerr << "Error: " << err << std::endl;
+            }
+            return;
+        }
 
         duckpass::SecureString password;
         if (isatty(STDIN_FILENO)) {
@@ -49,6 +91,8 @@ void add_command::setup(CLI::App& app) {
                 password.push_back(c);
             }
         }
+
+        const duckpass::SecureString master_password = utils::get_password_silent("Enter master password: ");
 
         try {
             duckpass::service::VaultService vault_service(vault_path, master_password);

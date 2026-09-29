@@ -7,6 +7,7 @@
 #include "duckpass/clipboard_handler.h"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
+#include "duckpass/ipc.h"
 #include "duckpass/utils.h"
 #include "duckpass/vault_service.h"
 void get_command::setup(CLI::App &app) {
@@ -19,6 +20,47 @@ void get_command::setup(CLI::App &app) {
     get_cmd->add_flag("-s,--show", *show_password, "Show the password in terminal instead of copying to clipboard");
 
     get_cmd->callback([name, show_password]() {
+        const duckpass::SecureString service_name(name->begin(), name->end());
+
+        // 1. Try resolving via DuckPass Agent if active
+        duckpass::ipc::IpcClient client;
+        if (client.is_agent_available()) {
+            auto status = client.get_status();
+            if (status && !status->is_unlocked) {
+                const duckpass::SecureString master_password = utils::get_password_silent("Agent is locked. Enter master password: ");
+                std::string unlock_err;
+                if (!client.unlock(master_password, unlock_err)) {
+                    std::cerr << "Error: " << unlock_err << std::endl;
+                    return;
+                }
+            }
+
+            std::string err;
+            auto entry_opt = client.get_entry(service_name, err);
+            if (!entry_opt) {
+                std::cerr << "Error: " << (err.empty() ? "Entry '" + *name + "' not found." : err) << std::endl;
+                return;
+            }
+
+            if (*show_password) {
+                std::cout << "Entry: " << entry_opt->service << std::endl;
+                std::cout << "  Username: " << entry_opt->username << std::endl;
+                std::cout << "  Password: " << entry_opt->password << std::endl;
+            } else {
+                if (clipboard_handler::set_text(entry_opt->password)) {
+                    std::cout << "Password for '" << *name << "' copied to clipboard." << std::endl;
+                    constexpr int delay_seconds = 30;
+                    std::cout << "It will be cleared automatically in " << delay_seconds << " seconds." << std::endl;
+                    clipboard_handler::clear_after_delay(std::chrono::seconds(delay_seconds));
+                } else {
+                    std::cerr << "Error: Could not copy to clipboard." << std::endl;
+                    std::cout << "Use --show to print to terminal instead." << std::endl;
+                }
+            }
+            return;
+        }
+
+        // 2. Standalone fallback (direct vault file access)
         const config_handler config;
         const auto vault_path = config.get_vault_path();
 

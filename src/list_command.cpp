@@ -6,8 +6,8 @@
 #include "CLI/CLI.hpp"
 #include "duckpass/config_handler.h"
 #include "duckpass/exceptions.h"
+#include "duckpass/ipc.h"
 #include "duckpass/terminal_utils.h"
-#include "duckpass/utils.h"
 #include "duckpass/vault_service.h"
 
 namespace list_command {
@@ -19,6 +19,39 @@ namespace list_command {
         list_cmd->add_option("query", query, "Fuzzy search query");
 
         list_cmd->callback([]() {
+            // 1. Try DuckPass Agent if active
+            duckpass::ipc::IpcClient client;
+            if (client.is_agent_available()) {
+                auto status = client.get_status();
+                if (status && !status->is_unlocked) {
+                    const duckpass::SecureString master_password = terminal_utils::read_password("Agent is locked. Enter Master Password: ");
+                    std::string unlock_err;
+                    if (!client.unlock(master_password, unlock_err)) {
+                        std::cerr << "Error: " << unlock_err << std::endl;
+                        return;
+                    }
+                }
+
+                auto entries = client.list_entries(query);
+                if (entries.empty()) {
+                    if (query.empty()) {
+                        std::cout << "The vault is currently empty.\n";
+                    } else {
+                        std::cout << "No services found matching the query '" << query << "'.\n";
+                    }
+                    return;
+                }
+
+                if (query.empty()) {
+                    std::cout << "--- List of all services ---\n";
+                }
+                for (const auto& [svc, usr] : entries) {
+                    std::cout << "Service: " << svc << " | Username: " << usr << "\n";
+                }
+                return;
+            }
+
+            // 2. Standalone fallback
             const duckpass::SecureString master_password = terminal_utils::read_password("Enter Master Password: ");
 
             try {
