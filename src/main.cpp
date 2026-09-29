@@ -9,6 +9,7 @@
 #include <curl/curl.h>
 
 #include "duckpass/add_command.h"
+#include "duckpass/agent_command.h"
 #include "duckpass/audit_command.h"
 #include "duckpass/completion_command.h"
 #include "duckpass/delete_command.h"
@@ -40,6 +41,7 @@ int main(int argc, char** argv) {
     // --- Setup All Commands using CLI11 Callbacks ---
     init_command::setup(app);
     rekey_command::setup(app);
+    agent_command::setup(app);
     add_command::setup(app);
     list_command::setup(app);
     get_command::setup(app);

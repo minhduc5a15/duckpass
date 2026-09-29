@@ -20,6 +20,8 @@ target_compile_definitions(zxcvbn PUBLIC USE_DICT_FILE)
 # Explicitly list core source files (excluding main.cpp)
 set(CORE_SOURCES
         src/add_command.cpp
+        src/agent_command.cpp
+        src/agent_server.cpp
         src/audit_command.cpp
         src/audit_engine.cpp
         src/clipboard_handler.cpp
@@ -33,6 +35,7 @@ set(CORE_SOURCES
         src/get_command.cpp
         src/hibp_checker.cpp
         src/init_command.cpp
+        src/ipc.cpp
         src/list_command.cpp
         src/local_storage.cpp
         src/otp_command.cpp
@@ -58,6 +61,10 @@ target_link_libraries(duckpass_core PUBLIC OpenSSL::Crypto ${ARGON2_LIBRARIES} C
 # Create the main executable from our core library + main.cpp
 add_executable(duckpass src/main.cpp)
 target_link_libraries(duckpass PRIVATE duckpass_core)
+
+# Create the background agent daemon executable
+add_executable(duckpass-agent src/daemon_main.cpp)
+target_link_libraries(duckpass-agent PRIVATE duckpass_core)
 
 # Legacy test executable
 add_executable(audit_tests
@@ -85,6 +92,7 @@ set(UNIT_TEST_SOURCES
         tests/vault_service_test.cpp
         tests/audit_test.cpp
         tests/totp_test.cpp
+        tests/ipc_test.cpp
 )
 
 add_executable(duckpass_unit_tests ${UNIT_TEST_SOURCES})
