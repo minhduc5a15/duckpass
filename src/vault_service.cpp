@@ -26,7 +26,7 @@ namespace duckpass::service {
                         continue;
                     }
                     auto local_entry = vault_.get_entry(svc);
-                    if (!local_entry) {
+                    if (!local_entry || disk_entry.last_updated > local_entry->last_updated) {
                         const_cast<vault_handler::Vault&>(vault_).add_entry(disk_entry);
                     }
                 }
@@ -42,8 +42,10 @@ namespace duckpass::service {
         if (new_master_password.empty()) {
             throw std::invalid_argument("New master password cannot be empty.");
         }
-        master_password_ = duckpass::ProtectedString(new_master_password);
+        auto lock = duckpass::storage::acquire_file_lock(vault_path_);
         save();
+        master_password_ = duckpass::ProtectedString(new_master_password);
+        vault_handler::save_vault(vault_path_, vault_, master_password_.unprotect());
     }
 
     void VaultService::add_entry(duckpass::SecureString service, duckpass::SecureString username, duckpass::SecureString password,
@@ -71,6 +73,7 @@ namespace duckpass::service {
         entry.username = duckpass::ProtectedString(username);
         entry.password = duckpass::ProtectedString(password);
         entry.totp_secret = duckpass::ProtectedString(totp_secret);
+        entry.last_updated = static_cast<uint64_t>(std::time(nullptr));
 
         vault_.add_entry(std::move(entry));
         save();

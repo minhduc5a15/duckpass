@@ -184,3 +184,34 @@ TEST_F(VaultServiceTest, ExportJsonEscapesQuotesAndPreservesTotp) {
     EXPECT_NE(json.find(R"("p@ss\"word\nnext")"), std::string::npos);
     EXPECT_NE(json.find("JBSWY3DPEHPK3PXP"), std::string::npos);
 }
+
+TEST_F(VaultServiceTest, ConcurrentUpdatesPreserveNewestTimestampOnMerge) {
+    // 1. Initial entry
+    {
+        duckpass::service::VaultService init_service(vault_path, master_password);
+        init_service.add_entry(duckpass::SecureString("gmail"), duckpass::SecureString("user@gmail.com"), duckpass::SecureString("old_pwd"));
+    }
+
+    // 2. Open two service instances
+    duckpass::service::VaultService service_a(vault_path, master_password);
+    duckpass::service::VaultService service_b(vault_path, master_password);
+
+    // Ensure timestamp distinction
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+
+    // 3. Service A updates "gmail" password on disk
+    service_a.update_entry(duckpass::SecureString("gmail"), std::nullopt, duckpass::SecureString("updated_pwd_from_a"));
+
+    // 4. Service B adds another entry and saves
+    service_b.add_entry(duckpass::SecureString("gitlab"), duckpass::SecureString("gituser"), duckpass::SecureString("gitpwd"));
+
+    // 5. Verify that Service B did not clobber Service A's update
+    duckpass::service::VaultService verify_service(vault_path, master_password);
+    auto gmail_entry = verify_service.get_entry(duckpass::SecureString("gmail"));
+    ASSERT_TRUE(gmail_entry.has_value());
+    EXPECT_EQ(gmail_entry->password.unprotect(), duckpass::SecureString("updated_pwd_from_a"));
+
+    auto gitlab_entry = verify_service.get_entry(duckpass::SecureString("gitlab"));
+    ASSERT_TRUE(gitlab_entry.has_value());
+    EXPECT_EQ(gitlab_entry->password.unprotect(), duckpass::SecureString("gitpwd"));
+}
