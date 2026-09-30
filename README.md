@@ -46,12 +46,15 @@
 ```
 
 ### 1. Cryptographic Design
+
 - **Key Derivation (KDF)**: Argon2id with 64 MB memory cost ($m=65536$), 3 iterations ($t=3$), 4 parallelism lanes ($p=4$), and cryptographically secure 16-byte random salts.
 - **Vault Encryption**: AES-256-GCM with a 12-byte random IV and 16-byte authentication tag. The Additional Authenticated Data (AAD) binds the header version tag (`DUCKPASS_V1`) to prevent ciphertext substitution.
 - **In-Memory Protection**: Sensitive fields in transit use `duckpass::ProtectedString` with dynamic per-instance XOR masking, random canaries, and automatic zeroization (`OPENSSL_cleanse`) on destruction.
 
 ### 2. Transactional Rekey & Crash Safety
+
 Rekeying a vault is an atomic, crash-safe transaction:
+
 1. **Advisory Locking**: Acquires a fail-fast exclusive lock (`flock(LOCK_EX)`) with `EINTR` retry handling.
 2. **Merge Disk State**: Merges any concurrent disk writes using the current master password.
 3. **One-Shot Encryption**: Derives the new key and encrypts the vault payload into a single payload buffer.
@@ -60,7 +63,9 @@ Rekeying a vault is an atomic, crash-safe transaction:
 6. **RAM State Update**: Only after both disk writes succeed is the in-memory master password updated.
 
 ### 3. Worker Process Isolation (`zxcvbn-c`)
+
 To eliminate plaintext remnants left by third-party C libraries:
+
 - `zxcvbn` is decoupled from `duckpass_core` and linked strictly to `duckpass-entropy-worker`.
 - Communication occurs across unidirectional pipes using a canonical 21-byte Little-Endian protocol (`std::bit_cast<uint64_t>` for `double` fields).
 - A custom RAII `SigpipeBlocker` consumes pending `SIGPIPE` signals with `sigtimedwait()` on broken pipes before restoring masks, preventing unexpected process crashes.
@@ -81,6 +86,7 @@ To eliminate plaintext remnants left by third-party C libraries:
 - **Optional Tools**: `xclip` / `xsel` (X11) or `wl-clipboard` (Wayland) for clipboard copying.
 
 #### Ubuntu / Debian
+
 ```bash
 sudo apt update
 sudo apt install -y build-essential cmake ninja-build \
@@ -88,31 +94,37 @@ sudo apt install -y build-essential cmake ninja-build \
 ```
 
 #### Fedora / RHEL
+
 ```bash
 sudo dnf install -y gcc-c++ cmake ninja-build \
     openssl-devel libargon2-devel libcurl-devel xclip
 ```
 
 #### Arch Linux
+
 ```bash
 sudo pacman -S base-devel cmake ninja openssl argon2 curl xclip
 ```
 
 ### Linux Secure Heap Requirement (`CAP_IPC_LOCK`)
+
 To lock memory pages and prevent secrets from paging to disk:
+
 ```bash
 # Optional but recommended for production binaries:
 sudo setcap cap_ipc_lock=+ep ./build/duckpass
 sudo setcap cap_ipc_lock=+ep ./build/duckpass-agent
 sudo setcap cap_ipc_lock=+ep ./build/duckpass-entropy-worker
 ```
-*(If capabilities are not configured or memory locking is restricted, DuckPass falls back to secure heap without mlock, issuing a diagnostic warning).*
+
+_(If capabilities are not configured or memory locking is restricted, DuckPass falls back to secure heap without mlock, issuing a diagnostic warning)._
 
 ---
 
 ## Building & Testing
 
 ### 1. Build the Binaries
+
 ```bash
 # Configure build directory with Ninja
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -122,23 +134,30 @@ cmake --build build
 ```
 
 This compiles:
+
 - `build/duckpass`: Main CLI client.
 - `build/duckpass-agent`: Background session daemon.
 - `build/duckpass-entropy-worker`: Isolated entropy evaluation worker.
 - `build/duckpass_unit_tests`: Comprehensive GoogleTest suite.
 
 ### 2. Run the Test Suite
+
 DuckPass includes 47 unit and integration tests covering cryptography, storage reliability, IPC, TOTP test vectors, transaction rollback, and deadlock prevention:
+
 ```bash
 ctest --test-dir build --output-on-failure
 ```
+
 Or run the binary directly:
+
 ```bash
 ./build/duckpass_unit_tests
 ```
 
 ### 3. Verify Clean Dependency Boundary
+
 Verify that `duckpass` and `duckpass-agent` are completely isolated from `zxcvbn`:
+
 ```bash
 nm build/duckpass | grep -i zxcvbn || echo "duckpass is CLEAN"
 nm build/duckpass-agent | grep -i zxcvbn || echo "duckpass-agent is CLEAN"
@@ -149,12 +168,15 @@ nm build/duckpass-agent | grep -i zxcvbn || echo "duckpass-agent is CLEAN"
 ## Command-Line Usage
 
 ### 1. Initialize a New Vault
+
 ```bash
 duckpass init
 ```
+
 Initializes a new encrypted vault at `~/.duckvault` (or custom path set via `DUCKPASS_VAULT_PATH`).
 
 ### 2. Manage Entries
+
 ```bash
 # Add an entry (prompts for password and optional TOTP secret securely)
 duckpass add github octocat@github.com
@@ -176,6 +198,7 @@ duckpass delete github
 ```
 
 ### 3. Time-Based One-Time Passwords (2FA / TOTP)
+
 ```bash
 # Generate current 6-digit TOTP code
 duckpass otp github
@@ -185,7 +208,9 @@ duckpass otp github --copy
 ```
 
 ### 4. Background Session Agent
+
 Eliminates repetitive password entry while working in terminal sessions:
+
 ```bash
 # Start the background daemon
 duckpass agent start
@@ -208,7 +233,9 @@ duckpass agent stop
 ```
 
 ### 5. Security Audit
+
 Perform deep offline security evaluations and optional online breach checks:
+
 ```bash
 # Offline audit: checks entropy (via isolated worker), reuse, and stale passwords
 duckpass audit
@@ -221,12 +248,15 @@ duckpass audit --online
 ```
 
 ### 6. Rekey Vault (Change Master Password)
+
 ```bash
 duckpass rekey
 ```
+
 Prompts for current and new master passwords, executes the transactional rekey sequence, and updates `.duckvault` and `.duckvault.bak`.
 
 ### 7. Export Vault
+
 ```bash
 # Export to CSV (with formula injection defense)
 duckpass export -o backup.csv -f csv
@@ -236,6 +266,7 @@ duckpass export -o backup.json -f json
 ```
 
 ### 8. Interactive Shell & Autocompletion
+
 ```bash
 # Launch interactive REPL with tab auto-completion
 duckpass shell

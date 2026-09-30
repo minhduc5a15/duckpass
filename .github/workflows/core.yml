@@ -1,0 +1,71 @@
+name: Core C++ CI
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'tests/**'
+      - 'vendor/**'
+      - 'CMakeLists.txt'
+      - 'format.sh'
+      - '.github/workflows/core.yml'
+  pull_request:
+    branches: [ "main", "master" ]
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'tests/**'
+      - 'vendor/**'
+      - 'CMakeLists.txt'
+      - 'format.sh'
+      - '.github/workflows/core.yml'
+
+jobs:
+  build-and-test:
+    name: Build & Verify Core C++
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            clang-format \
+            libssl-dev \
+            libargon2-dev \
+            libcurl4-openssl-dev \
+            pkg-config
+
+      - name: Verify code formatting
+        run: |
+          ./format.sh
+          git diff --exit-code || (echo "Code formatting issues found. Please run ./format.sh" && exit 1)
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_STANDARD=20
+
+      - name: Build C++ targets
+        run: |
+          cmake --build build
+
+      - name: Verify Symbol Isolation (No zxcvbn in Core/Agent)
+        run: |
+          nm build/duckpass | grep -i zxcvbn && exit 1 || echo "duckpass is CLEAN"
+          nm build/duckpass-agent | grep -i zxcvbn && exit 1 || echo "duckpass-agent is CLEAN"
+          nm build/libduckpass_core.a | grep -i zxcvbn && exit 1 || echo "libduckpass_core.a is CLEAN"
+          nm build/duckpass-entropy-worker | grep -i zxcvbn || exit 1
+
+      - name: Run Test Suite (GoogleTest & Legacy)
+        run: |
+          ctest --test-dir build --output-on-failure

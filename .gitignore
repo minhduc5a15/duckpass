@@ -11,5 +11,7 @@ out
 task
 reports
 !README.md
+!docs/*.md
+!docs/**/*.md
 *.sh
 CMakePresets.json
