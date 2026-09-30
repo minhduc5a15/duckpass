@@ -31,8 +31,6 @@ namespace audit {
                 const auto master_password = terminal_utils::read_password("Enter master password: ");
                 const duckpass::service::VaultService vault_service(vault_path, master_password);
 
-                const ScopedZxcvbn zxcvbn;
-
                 std::cout << "Auditing " << vault_service.get_all_entries().size() << " entries...\n";
                 if (config->check_online) {
                     std::cout << "(Online check enabled. This may take a moment...)\n";

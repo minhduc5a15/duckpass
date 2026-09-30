@@ -54,7 +54,10 @@ namespace vault_handler {
     // Loads, decrypts, and parses the vault file into a Vault object.
     Vault load_vault(const std::filesystem::path &vault_path, const SecureString &master_password);
 
+    // Serializes and encrypts the Vault object into a SecureBytes blob without writing to disk.
+    duckpass::SecureBytes serialize_and_encrypt_vault(const Vault &vault, const SecureString &master_password);
+
     // Encrypts and saves the Vault object to the vault file.
-    void save_vault(const std::filesystem::path &vault_path, const Vault &vault, const SecureString &master_password);
+    void save_vault(const std::filesystem::path &vault_path, const Vault &vault, const SecureString &master_password, bool create_backup = true);
 
 }  // namespace vault_handler

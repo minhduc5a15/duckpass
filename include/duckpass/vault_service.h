@@ -79,9 +79,21 @@ namespace duckpass::service {
         const vault_handler::Vault::EntryContainer& get_all_entries() const;
 
     private:
+        /**
+         * @brief Merges disk state into in-memory vault.
+         * @note INVARIANT: The caller MUST already hold the exclusive file lock for vault_path_.
+         */
+        void merge_disk_state_with_lock_held() const;
+
+        /**
+         * @brief Commits in-memory vault to disk and clears deleted_services_ on success.
+         * @note INVARIANT: The caller MUST already hold the exclusive file lock for vault_path_.
+         */
+        void commit_vault_with_lock_held(const duckpass::SecureString& target_password) const;
+
         std::filesystem::path vault_path_;
         duckpass::ProtectedString master_password_;
-        vault_handler::Vault vault_;
+        mutable vault_handler::Vault vault_;
         mutable std::vector<duckpass::SecureString> deleted_services_;
     };
 

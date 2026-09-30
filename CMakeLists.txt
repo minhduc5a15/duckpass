@@ -56,7 +56,7 @@ target_include_directories(duckpass_core PUBLIC
         "${CMAKE_SOURCE_DIR}/vendor"
         ${ARGON2_INCLUDE_DIRS}
 )
-target_link_libraries(duckpass_core PUBLIC OpenSSL::Crypto ${ARGON2_LIBRARIES} CURL::libcurl zxcvbn)
+target_link_libraries(duckpass_core PUBLIC OpenSSL::Crypto ${ARGON2_LIBRARIES} CURL::libcurl)
 
 # Create the main executable from our core library + main.cpp
 add_executable(duckpass src/main.cpp)
@@ -65,6 +65,10 @@ target_link_libraries(duckpass PRIVATE duckpass_core)
 # Create the background agent daemon executable
 add_executable(duckpass-agent src/daemon_main.cpp)
 target_link_libraries(duckpass-agent PRIVATE duckpass_core)
+
+# Create the standalone isolated worker for zxcvbn evaluation
+add_executable(duckpass-entropy-worker src/entropy_worker_main.cpp)
+target_link_libraries(duckpass-entropy-worker PRIVATE zxcvbn OpenSSL::Crypto)
 
 # Legacy test executable
 add_executable(audit_tests

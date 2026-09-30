@@ -1,6 +1,5 @@
 #pragma once
 
-#include <map>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -31,17 +30,6 @@ namespace audit {
         int pwned_passwords;
         int reused_passwords;
         int stale_passwords;
-    };
-
-    class ScopedZxcvbn {
-    public:
-        ScopedZxcvbn();
-        ~ScopedZxcvbn();
-        ScopedZxcvbn(const ScopedZxcvbn&) = delete;
-        ScopedZxcvbn& operator=(const ScopedZxcvbn&) = delete;
-
-    private:
-        bool initialized = false;
     };
 
     std::ostream& operator<<(std::ostream& os, const AuditReport& report);

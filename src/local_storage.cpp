@@ -127,11 +127,33 @@ namespace duckpass::storage {
     FileLockGuard acquire_file_lock(const std::filesystem::path& path) {
         std::filesystem::path const lock_path = path.string() + ".lock";
         int const lock_fd = open(lock_path.c_str(), O_RDWR | O_CREAT, 0600);
-        if (lock_fd != -1) {
-            flock(lock_fd, LOCK_EX);
+        if (lock_fd == -1) {
+            throw vault_io_error("Failed to open lock file: " + lock_path.string() + " (" + std::strerror(errno) + ")");
+        }
+        while (flock(lock_fd, LOCK_EX) == -1) {
+            if (errno == EINTR) continue;
+            int const err = errno;
+            close(lock_fd);
+            throw vault_io_error("Failed to acquire flock on: " + lock_path.string() + " (" + std::strerror(err) + ")");
         }
         return FileLockGuard(lock_fd);
     }
+
+    namespace {
+        struct TempFileGuard {
+            std::filesystem::path path;
+            bool dismissed = false;
+
+            ~TempFileGuard() {
+                if (!dismissed && !path.empty()) {
+                    std::error_code ec;
+                    std::filesystem::remove(path, ec);
+                }
+            }
+
+            void dismiss() noexcept { dismissed = true; }
+        };
+    }  // namespace
 
     void write_file_atomic(const std::filesystem::path& path, const std::span<const uint8_t> data, const bool create_backup) {
         // 1. Generate a truly collision-free unique temporary path in the target directory
@@ -142,6 +164,7 @@ namespace duckpass::storage {
         std::filesystem::path parent_dir = path.parent_path();
         if (parent_dir.empty()) parent_dir = ".";
         std::filesystem::path const tmp_path = parent_dir / unique_tmp_name;
+        TempFileGuard temp_guard{tmp_path};
 
         // Use O_CREAT | O_EXCL to ensure atomic unique creation without symlink vulnerabilities
         int const fd = open(tmp_path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
@@ -155,8 +178,6 @@ namespace duckpass::storage {
             if (fsync(fd) == -1) throw vault_io_error(std::string("Failed to sync file to disk: ") + std::strerror(errno));
         } catch (...) {
             close(fd);
-            std::error_code ec;
-            std::filesystem::remove(tmp_path, ec);
             throw;
         }
 
@@ -174,13 +195,19 @@ namespace duckpass::storage {
             }
         }
 
+        // Test fault injection seam
+        if (s_test_write_fault_injector) {
+            s_test_write_fault_injector(path);
+        }
+
         // 3. Atomically rename the verified temporary file over the target path
         std::error_code ec;
         std::filesystem::rename(tmp_path, path, ec);
         if (ec) {
-            std::filesystem::remove(tmp_path);
             throw vault_io_error("Failed to atomically rename vault file: " + ec.message());
         }
+
+        temp_guard.dismiss();
 
         // 4. Directory metadata sync to guarantee entry persistence
         int const dir_fd = open(parent_dir.c_str(), O_RDONLY | O_DIRECTORY);

@@ -1,10 +1,16 @@
 #include "duckpass/vault_service.h"
 
 #include <gtest/gtest.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
+#include <chrono>
 #include <filesystem>
+#include <thread>
 
 #include "duckpass/exceptions.h"
+#include "duckpass/local_storage.h"
 
 class VaultServiceTest : public ::testing::Test {
 protected:
@@ -214,4 +220,128 @@ TEST_F(VaultServiceTest, ConcurrentUpdatesPreserveNewestTimestampOnMerge) {
     auto gitlab_entry = verify_service.get_entry(duckpass::SecureString("gitlab"));
     ASSERT_TRUE(gitlab_entry.has_value());
     EXPECT_EQ(gitlab_entry->password.unprotect(), duckpass::SecureString("gitpwd"));
+}
+
+TEST_F(VaultServiceTest, RekeyTransactionSuccessAndNoDeadlock) {
+    // 1. Initial entry
+    {
+        duckpass::service::VaultService init_service(vault_path, master_password);
+        init_service.add_entry(duckpass::SecureString("github"), duckpass::SecureString("user"), duckpass::SecureString("gh_token"));
+    }
+
+    duckpass::SecureString new_password("CompletelyNewMasterPassword789!");
+
+    // Run rekey in a child process with a hard 10-second timeout
+    pid_t const pid = fork();
+    ASSERT_GE(pid, 0);
+
+    if (pid == 0) {
+        try {
+            duckpass::service::VaultService child_service(vault_path, master_password);
+            child_service.rekey(new_password);
+            _exit(0);
+        } catch (...) {
+            _exit(2);
+        }
+    }
+
+    // Parent monitors child with 10-second hard deadline
+    auto const deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    int status = 0;
+    bool completed = false;
+
+    while (std::chrono::steady_clock::now() < deadline) {
+        pid_t const res = waitpid(pid, &status, WNOHANG);
+        if (res == pid) {
+            completed = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    if (!completed) {
+        kill(pid, SIGKILL);
+        waitpid(pid, &status, 0);
+        FAIL() << "VaultService::rekey() DEADLOCKED! Hard timeout exceeded (10s).";
+    }
+
+    ASSERT_TRUE(WIFEXITED(status));
+    EXPECT_EQ(WEXITSTATUS(status), 0);
+
+    // Verify current vault decrypts with new password
+    EXPECT_NO_THROW({
+        duckpass::service::VaultService verify_service(vault_path, new_password);
+        auto entry = verify_service.get_entry(duckpass::SecureString("github"));
+        ASSERT_TRUE(entry.has_value());
+        EXPECT_EQ(entry->password.unprotect(), duckpass::SecureString("gh_token"));
+    });
+
+    // Verify current vault throws wrong_password_error with old password
+    EXPECT_THROW({ vault_handler::load_vault(vault_path, master_password); }, duckpass::wrong_password_error);
+
+    // Verify .bak decrypts with new password
+    std::filesystem::path backup_path = vault_path;
+    backup_path.replace_extension(vault_path.extension().string() + ".bak");
+    ASSERT_TRUE(std::filesystem::exists(backup_path));
+    EXPECT_NO_THROW({
+        auto bak_vault = vault_handler::load_vault(backup_path, new_password);
+        auto entry = bak_vault.get_entry(duckpass::SecureString("github"));
+        ASSERT_TRUE(entry.has_value());
+    });
+
+    // Verify .bak throws wrong_password_error with old password
+    EXPECT_THROW({ vault_handler::load_vault(backup_path, master_password); }, duckpass::wrong_password_error);
+}
+
+TEST_F(VaultServiceTest, TransactionRollbackOnDiskWriteFailure) {
+    // 1. Initial entry
+    {
+        duckpass::service::VaultService init_service(vault_path, master_password);
+        init_service.add_entry(duckpass::SecureString("test_service"), duckpass::SecureString("user"), duckpass::SecureString("pwd1"));
+    }
+
+    duckpass::service::VaultService service(vault_path, master_password);
+    duckpass::SecureString new_password("BrandNewKey456!");
+
+    // Set fault injector on vault_path (current file) to simulate write failure after backup has been written
+    duckpass::storage::s_test_write_fault_injector = [&](const std::filesystem::path& target) {
+        if (target == vault_path) {
+            throw duckpass::vault_io_error("Injected disk write failure on current vault");
+        }
+    };
+
+    EXPECT_THROW({ service.rekey(new_password); }, duckpass::vault_io_error);
+
+    // Reset hook
+    duckpass::storage::s_test_write_fault_injector = nullptr;
+
+    // Verify Crash-Safe / Recoverable state:
+    // 1. Current vault (.duckvault) remains OLD ciphertext (loads with old password)
+    EXPECT_NO_THROW({
+        auto current_vault = vault_handler::load_vault(vault_path, master_password);
+        auto entry = current_vault.get_entry(duckpass::SecureString("test_service"));
+        ASSERT_TRUE(entry.has_value());
+    });
+    EXPECT_THROW({ vault_handler::load_vault(vault_path, new_password); }, duckpass::wrong_password_error);
+
+    // 2. Backup (.duckvault.bak) was written with NEW ciphertext
+    std::filesystem::path backup_path = vault_path;
+    backup_path.replace_extension(vault_path.extension().string() + ".bak");
+    ASSERT_TRUE(std::filesystem::exists(backup_path));
+    EXPECT_NO_THROW({
+        auto bak_vault = vault_handler::load_vault(backup_path, new_password);
+        auto entry = bak_vault.get_entry(duckpass::SecureString("test_service"));
+        ASSERT_TRUE(entry.has_value());
+    });
+    EXPECT_THROW({ vault_handler::load_vault(backup_path, master_password); }, duckpass::wrong_password_error);
+
+    // 3. In-memory master_password_ was NOT updated (remains old password)
+    // Verify by adding an entry with service, which should still encrypt using master_password
+    EXPECT_NO_THROW({ service.add_entry(duckpass::SecureString("service_after_fail"), duckpass::SecureString("u"), duckpass::SecureString("p")); });
+
+    // 4. Ensure no .tmp files were left behind in test_dir
+    for (const auto& entry : std::filesystem::directory_iterator(test_dir)) {
+        std::string const filename = entry.path().filename().string();
+        EXPECT_EQ(filename.find(".tmp."), std::string::npos) << "Found orphan temp file: " << filename;
+    }
 }

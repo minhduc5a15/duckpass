@@ -11,7 +11,6 @@
 #include "duckpass/crypto.h"
 #include "duckpass/ipc.h"
 #include "duckpass/terminal_utils.h"
-#include "duckpass/totp.h"
 #include "duckpass/utils.h"
 #include "duckpass/vault_service.h"
 
@@ -379,7 +378,6 @@ namespace duckpass::shell {
                 config.stale_threshold_seconds = 365 * 24 * 3600;
 
                 try {
-                    const audit::ScopedZxcvbn zxcvbn;
                     std::cout << "Auditing " << vault_service->get_all_entries().size() << " entries...\n";
                     if (config.check_online) {
                         std::cout << "(Online check enabled. This may take a moment...)\n";

@@ -246,17 +246,9 @@ namespace vault_handler {
     }
 
     /**
-     * @brief Serializes and encrypts a vault to disk.
-     *
-     * Process:
-     * 1. Serialize all vault entries into a packed binary format.
-     * 2. Generate cryptographically secure random salt and IV.
-     * 3. Derive encryption key from master password using Argon2id.
-     * 4. Encrypt serialized data using AES-256-GCM.
-     * 5. Package [Magic][Version][KDF Params][Salt][IV][Ciphertext+Tag] into a single blob.
-     * 6. Atomically write the blob to disk.
+     * @brief Serializes and encrypts a vault into a SecureBytes blob without writing to disk.
      */
-    void save_vault(const std::filesystem::path& vault_path, const Vault& vault, const SecureString& master_password) {
+    duckpass::SecureBytes serialize_and_encrypt_vault(const Vault& vault, const SecureString& master_password) {
         // 1. Serialize entries
         const duckpass::SecureBytes plaintext = vault.serialize();
 
@@ -296,9 +288,14 @@ namespace vault_handler {
         // 4. Final Blob: [HEADER][CIPHERTEXT+TAG]
         duckpass::SecureBytes full_package = std::move(header);
         full_package.insert(full_package.end(), ciphertext.begin(), ciphertext.end());
+        return full_package;
+    }
 
-        // 4. Delegate disk I/O and atomic backup to storage layer.
-        // write_file_atomic ensures the new data is fully synced before any backup/replacement occurs.
-        duckpass::storage::write_file_atomic(vault_path, full_package, true);
+    /**
+     * @brief Serializes and encrypts a vault to disk.
+     */
+    void save_vault(const std::filesystem::path& vault_path, const Vault& vault, const SecureString& master_password, bool create_backup) {
+        duckpass::SecureBytes full_package = serialize_and_encrypt_vault(vault, master_password);
+        duckpass::storage::write_file_atomic(vault_path, full_package, create_backup);
     }
 }  // namespace vault_handler

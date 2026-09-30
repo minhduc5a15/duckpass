@@ -3,7 +3,6 @@
 #include <unistd.h>
 
 #include <ctime>
-#include <filesystem>
 #include <future>
 #include <iomanip>
 #include <iostream>
@@ -12,7 +11,6 @@
 #include <unordered_map>
 
 #include "duckpass/crypto.h"
-#include "zxcvbn.h"
 
 namespace audit {
 
@@ -118,50 +116,6 @@ namespace audit {
         }
 
         return report;
-    }
-
-    ScopedZxcvbn::ScopedZxcvbn() {
-        std::vector<std::filesystem::path> candidates;
-
-        if (const char* env_path = std::getenv("DUCKPASS_DICT_PATH")) {
-            candidates.emplace_back(env_path);
-        }
-
-        char exe_path[PATH_MAX];
-        const ssize_t count = readlink("/proc/self/exe", exe_path, PATH_MAX);
-        if (count != -1) {
-            const std::filesystem::path bin_dir = std::filesystem::path(std::string(exe_path, count)).parent_path();
-            candidates.push_back(bin_dir / "zxcvbn.dict");
-            candidates.push_back(bin_dir / "vendor" / "zxcvbn-c" / "zxcvbn.dict");
-            candidates.push_back(bin_dir / ".." / "vendor" / "zxcvbn-c" / "zxcvbn.dict");
-        }
-
-        candidates.emplace_back("zxcvbn.dict");
-        candidates.emplace_back("vendor/zxcvbn-c/zxcvbn.dict");
-        candidates.emplace_back("../vendor/zxcvbn-c/zxcvbn.dict");
-
-        for (const auto& path : candidates) {
-            std::error_code ec;
-            if (std::filesystem::exists(path, ec)) {
-                if (ZxcvbnInit(path.string().c_str())) {
-                    initialized = true;
-                    return;
-                }
-            }
-        }
-
-        std::cerr << "Warning: Could not locate or initialize 'zxcvbn.dict'.\n"
-                  << "Checked paths:\n";
-        for (const auto& path : candidates) {
-            std::cerr << "  - " << path.string() << "\n";
-        }
-        std::cerr << "Falling back to uninitialized zxcvbn with default rules.\n";
-    }
-
-    ScopedZxcvbn::~ScopedZxcvbn() {
-        if (initialized) {
-            ZxcvbnUnInit();
-        }
     }
 
     std::ostream& operator<<(std::ostream& os, const AuditReport& report) {

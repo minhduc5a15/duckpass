@@ -110,7 +110,6 @@ void test_vault_compatibility() {
 
 int main() {
     try {
-        audit::ScopedZxcvbn zxcvbn_guard;
         test_hashing();
         test_entropy();
         test_audit_engine();

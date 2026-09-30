@@ -1,12 +1,15 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <span>
-#include <vector>
 
 #include "duckpass/secure_allocator.h"
 
 namespace duckpass::storage {
+
+    // Test seam hook to simulate write faults in storage tests
+    inline std::function<void(const std::filesystem::path&)> s_test_write_fault_injector = nullptr;
 
     /**
      * @brief Reads the entire content of a file into a secure buffer.

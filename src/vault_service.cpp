@@ -15,27 +15,31 @@ namespace duckpass::service {
         vault_ = vault_handler::load_vault(vault_path_, master_password);
     }
 
-    void VaultService::save() const {
-        auto lock = duckpass::storage::acquire_file_lock(vault_path_);
+    void VaultService::merge_disk_state_with_lock_held() const {
         if (std::filesystem::exists(vault_path_)) {
-            try {
-                auto disk_vault = vault_handler::load_vault(vault_path_, master_password_.unprotect());
-                for (const auto& disk_entry : disk_vault.get_all_entries()) {
-                    auto svc = disk_entry.service.unprotect();
-                    if (std::find(deleted_services_.begin(), deleted_services_.end(), svc) != deleted_services_.end()) {
-                        continue;
-                    }
-                    auto local_entry = vault_.get_entry(svc);
-                    if (!local_entry || disk_entry.last_updated > local_entry->last_updated) {
-                        const_cast<vault_handler::Vault&>(vault_).add_entry(disk_entry);
-                    }
+            auto disk_vault = vault_handler::load_vault(vault_path_, master_password_.unprotect());
+            for (const auto& disk_entry : disk_vault.get_all_entries()) {
+                auto svc = disk_entry.service.unprotect();
+                if (std::find(deleted_services_.begin(), deleted_services_.end(), svc) != deleted_services_.end()) {
+                    continue;
                 }
-            } catch (...) {
-                // If disk load fails (e.g., initial creation or different password), save local state directly
+                auto local_entry = vault_.get_entry(svc);
+                if (!local_entry || disk_entry.last_updated > local_entry->last_updated) {
+                    vault_.add_entry(disk_entry);
+                }
             }
         }
+    }
+
+    void VaultService::commit_vault_with_lock_held(const duckpass::SecureString& target_password) const {
+        vault_handler::save_vault(vault_path_, vault_, target_password, true);
         deleted_services_.clear();
-        vault_handler::save_vault(vault_path_, vault_, master_password_.unprotect());
+    }
+
+    void VaultService::save() const {
+        auto lock = duckpass::storage::acquire_file_lock(vault_path_);
+        merge_disk_state_with_lock_held();
+        commit_vault_with_lock_held(master_password_.unprotect());
     }
 
     void VaultService::rekey(duckpass::SecureString new_master_password) {
@@ -43,9 +47,24 @@ namespace duckpass::service {
             throw std::invalid_argument("New master password cannot be empty.");
         }
         auto lock = duckpass::storage::acquire_file_lock(vault_path_);
-        save();
+
+        // 1. Merge disk state using old master password
+        merge_disk_state_with_lock_held();
+
+        // 2. Encrypt vault ONCE using new master password to produce new_blob
+        duckpass::SecureBytes new_blob = vault_handler::serialize_and_encrypt_vault(vault_, new_master_password);
+
+        // 3. Backup TRƯỚC: Ghi trực tiếp new_blob vào .bak với create_backup = false
+        std::filesystem::path backup_path = vault_path_;
+        backup_path.replace_extension(vault_path_.extension().string() + ".bak");
+        duckpass::storage::write_file_atomic(backup_path, new_blob, false);
+
+        // 4. Current SAU: Ghi trực tiếp new_blob vào vault_path_ với create_backup = false
+        duckpass::storage::write_file_atomic(vault_path_, new_blob, false);
+
+        // 5. RAM commit CUỐI CÙNG: Chỉ cập nhật khi toàn bộ I/O trên đĩa đã thành công
         master_password_ = duckpass::ProtectedString(new_master_password);
-        vault_handler::save_vault(vault_path_, vault_, master_password_.unprotect());
+        deleted_services_.clear();
     }
 
     void VaultService::add_entry(duckpass::SecureString service, duckpass::SecureString username, duckpass::SecureString password,
