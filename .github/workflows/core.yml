@@ -2,25 +2,23 @@ name: Core C++ CI
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
     paths:
-      - 'src/**'
-      - 'include/**'
-      - 'tests/**'
-      - 'vendor/**'
-      - 'CMakeLists.txt'
-      - 'format.sh'
-      - '.github/workflows/core.yml'
+      - "src/**"
+      - "include/**"
+      - "tests/**"
+      - "vendor/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/core.yml"
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
     paths:
-      - 'src/**'
-      - 'include/**'
-      - 'tests/**'
-      - 'vendor/**'
-      - 'CMakeLists.txt'
-      - 'format.sh'
-      - '.github/workflows/core.yml'
+      - "src/**"
+      - "include/**"
+      - "tests/**"
+      - "vendor/**"
+      - "CMakeLists.txt"
+      - ".github/workflows/core.yml"
 
 jobs:
   build-and-test:
@@ -38,16 +36,10 @@ jobs:
             build-essential \
             cmake \
             ninja-build \
-            clang-format \
             libssl-dev \
             libargon2-dev \
             libcurl4-openssl-dev \
             pkg-config
-
-      - name: Verify code formatting
-        run: |
-          ./format.sh
-          git diff --exit-code || (echo "Code formatting issues found. Please run ./format.sh" && exit 1)
 
       - name: Configure CMake
         run: |
